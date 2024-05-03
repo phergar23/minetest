@@ -8,7 +8,7 @@ uniform sampler2D textureFlags;
 
 varying mediump vec4 varTexCoord;
 
-void main(void)
+void main(void
 {
 	vec2 uv = varTexCoord.st;
 	vec4 left = texture2D(leftImage, uv).rgba;
