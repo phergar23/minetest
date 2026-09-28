@@ -1,0 +1,86 @@
+[
+ {"id":"inicio","titulo":"Historia de España","fecha":"","capitulo":"Inicio","marca":"",
+  "beats":[
+   ["Esta es la historia de España.","Un rincón de tierra entre dos mares, en el extremo sur de Europa y a un paso de África."],
+   ["Por aquí pasaron cazadores, navegantes, legiones, reyes y poetas.","Así que tomemos un lápiz… y empecemos a dibujarla."]
+  ]},
+ {"id":"prehistoria","titulo":"Prehistoria","fecha":"hace más de un millón de años","capitulo":"Prehistoria","marca":"−1 M",
+  "beats":[
+   ["Hace más de un millón de años, los primeros humanos ya caminaban por estas tierras.","En la sierra de Atapuerca, en Burgos, se han hallado algunos de los restos humanos más antiguos de Europa."],
+   ["Mucho después, hace más de catorce mil años, alguien entró en la cueva de Altamira con una antorcha…","y pintó en el techo bisontes de ocre y carbón."],
+   ["Aquellos bisontes siguen allí.","Son una de las grandes joyas del arte rupestre de la humanidad."]
+  ]},
+ {"id":"pueblos","titulo":"Íberos, celtas y navegantes","fecha":"primer milenio a. C.","capitulo":"Pueblos antiguos","marca":"−1000",
+  "beats":[
+   ["Siglos más tarde, la península estaba habitada por pueblos muy distintos:","íberos en el sur y el este, celtas en el centro, el norte y el oeste, y celtíberos en las tierras altas del interior, donde ambas culturas se mezclaban."],
+   ["Por el mar llegaron navegantes y comerciantes.","Los fenicios fundaron Gadir, la actual Cádiz. Los griegos se asentaron en Ampurias. Y los cartagineses levantaron Cartago Nova, la actual Cartagena."],
+   ["Con ellos llegaron las monedas, la escritura y nuevos cultivos.","Y también las guerras por el control del Mediterráneo."]
+  ]},
+ {"id":"roma","titulo":"Hispania romana","fecha":"218 a. C. – siglo V","capitulo":"Hispania romana","marca":"−218",
+  "beats":[
+   ["En el año 218 antes de Cristo, en plena guerra contra Cartago, Roma desembarcó en Ampurias.","Tardó casi dos siglos en dominar toda la península, a la que llamó Hispania."],
+   ["Roma lo transformó todo.","Construyó calzadas, puentes, teatros y acueductos como el de Segovia, levantado con bloques de granito sin una gota de argamasa."],
+   ["Del latín nacerían el castellano, el catalán y el gallego.","Y de Hispania salieron emperadores como Trajano y filósofos como Séneca."]
+  ]},
+ {"id":"visigodos","titulo":"El reino visigodo","fecha":"siglos V – VIII","capitulo":"Visigodos","marca":"s. V",
+  "beats":[
+   ["En el siglo quinto, mientras el Imperio romano de Occidente se desmoronaba, llegaron pueblos germánicos.","Los visigodos acabaron imponiéndose y convirtieron Toledo en su capital."],
+   ["En el año 589, el rey Recaredo se convirtió al catolicismo, lo que acercó a godos e hispanorromanos.","De aquella época quedan coronas de oro y piedras preciosas, como las del tesoro de Guarrazar."]
+  ]},
+ {"id":"alandalus","titulo":"Al-Ándalus","fecha":"711 – 1492","capitulo":"Al-Ándalus","marca":"711",
+  "beats":[
+   ["En el año 711, un ejército musulmán cruzó el estrecho de Gibraltar.","En pocos años dominó casi toda la península, que pasó a llamarse al-Ándalus."],
+   ["Córdoba llegó a ser una de las mayores ciudades de Europa.","En el año 929, Abderramán tercero se proclamó califa, y su corte brilló por su ciencia, su poesía y sus bibliotecas."],
+   ["Al-Ándalus nos dejó la Mezquita de Córdoba, la Alhambra de Granada y miles de palabras:","aceite, azúcar, almohada… y ojalá."]
+  ]},
+ {"id":"reinos","titulo":"Los reinos cristianos","fecha":"722 – 1492","capitulo":"Reinos cristianos","marca":"722",
+  "beats":[
+   ["Mientras tanto, en las montañas del norte, nació el reino de Asturias.","Según la tradición, todo empezó con la batalla de Covadonga, hacia el año 722."],
+   ["Después surgieron León, Castilla, Navarra, Aragón y los condados catalanes.","Durante siglos avanzaron hacia el sur, en lo que se conoce como la Reconquista."],
+   ["Fue una época de castillos y fronteras, pero también de intercambio entre cristianos, musulmanes y judíos,","y de peregrinos que recorrían el Camino de Santiago."]
+  ]},
+ {"id":"catolicos","titulo":"Los Reyes Católicos","fecha":"1469 – 1504","capitulo":"Reyes Católicos","marca":"1469",
+  "beats":[
+   ["En 1469, Isabel de Castilla y Fernando de Aragón se casaron.","Su unión sentó las bases de la monarquía española."],
+   ["1492 fue un año decisivo.","En enero cayó Granada, el último reino musulmán de la península.","Ese mismo año fueron expulsados los judíos que no aceptaron convertirse, y Nebrija publicó la primera gramática del castellano."],
+   ["Y el 12 de octubre, las tres naves de Cristóbal Colón, la Pinta, la Niña y la Santa María, llegaron a América.","El mundo ya no volvería a ser el mismo."]
+  ]},
+ {"id":"imperio","titulo":"Imperio y Siglo de Oro","fecha":"siglos XVI – XVII","capitulo":"Imperio y Siglo de Oro","marca":"1516",
+  "beats":[
+   ["Con Carlos primero, que también fue emperador del Sacro Imperio, y con su hijo Felipe segundo, la monarquía hispánica se convirtió en un imperio inmenso,","un imperio en el que, se decía, nunca se ponía el sol."],
+   ["En 1522, la nave Victoria, al mando de Juan Sebastián Elcano, completó la primera vuelta al mundo."],
+   ["Fue también el Siglo de Oro de las artes.","Cervantes escribió el Quijote, Velázquez pintó Las Meninas y Lope de Vega llenó los teatros."],
+   ["Pero las guerras en Europa y las crisis económicas fueron desgastando el imperio."]
+  ]},
+ {"id":"borbones","titulo":"Borbones e Ilustración","fecha":"siglo XVIII","capitulo":"Borbones","marca":"1700",
+  "beats":[
+   ["En 1700 murió Carlos segundo sin descendencia.","Tras la Guerra de Sucesión, Felipe quinto se convirtió en el primer rey de la dinastía Borbón."],
+   ["Llegaron las ideas de la Ilustración: la razón, la ciencia y las reformas.","Carlos tercero, conocido como el mejor alcalde de Madrid, llenó la capital de paseos, fuentes y monumentos como la Puerta de Alcalá."]
+  ]},
+ {"id":"xix","titulo":"Un siglo agitado","fecha":"siglo XIX","capitulo":"Siglo XIX","marca":"1808",
+  "beats":[
+   ["El 2 de mayo de 1808, el pueblo de Madrid se levantó contra las tropas de Napoleón.","Empezaba la Guerra de la Independencia, que Goya retrató en cuadros inolvidables."],
+   ["En plena guerra, en Cádiz, se aprobó la Constitución de 1812, la primera de España, conocida como la Pepa."],
+   ["Fue un siglo agitado: se independizaron casi todas las colonias americanas, hubo guerras carlistas, una breve Primera República y la restauración de la monarquía.","Mientras tanto, llegaban el ferrocarril y las fábricas."],
+   ["En 1898, España perdió Cuba, Puerto Rico y Filipinas.","Aquel golpe se recordaría como el Desastre del 98."]
+  ]},
+ {"id":"xx","titulo":"República, guerra y dictadura","fecha":"1931 – 1975","capitulo":"Siglo XX","marca":"1931",
+  "beats":[
+   ["En 1931 se proclamó la Segunda República, que trajo grandes reformas y el voto de las mujeres."],
+   ["Pero el país estaba profundamente dividido.","En julio de 1936, un golpe militar desencadenó la Guerra Civil, que durante casi tres años enfrentó a los españoles y dejó cientos de miles de muertos.","Picasso plasmó su horror en el Guernica."],
+   ["Tras la guerra, el general Franco impuso una dictadura que duró casi cuarenta años.","Fueron años de represión y de escasez, aunque en los sesenta la economía creció y llegaron los turistas."]
+  ]},
+ {"id":"democracia","titulo":"La democracia","fecha":"1975 – hoy","capitulo":"Democracia","marca":"1975",
+  "beats":[
+   ["Franco murió en noviembre de 1975, y Juan Carlos primero fue proclamado rey.","Comenzaba la Transición: en 1977 se celebraron las primeras elecciones democráticas desde 1936."],
+   ["Y en 1978, los españoles aprobaron en referéndum la Constitución que sigue vigente hoy.","La democracia resistió incluso el intento de golpe de Estado del 23 de febrero de 1981."],
+   ["En 1986, España entró en la Comunidad Europea.","Y en 1992 recibió al mundo con los Juegos Olímpicos de Barcelona y la Exposición Universal de Sevilla."],
+   ["En 2002 llegó el euro, y en 2014 Felipe sexto sucedió a su padre en el trono."]
+  ]},
+ {"id":"hoy","titulo":"Hoy","fecha":"…y mañana","capitulo":"Hoy","marca":"Hoy",
+  "beats":[
+   ["Hoy, España es una democracia diversa, con varias lenguas, el castellano, el catalán, el gallego y el euskera, y un mosaico de paisajes y culturas."],
+   ["Íberos, romanos, visigodos, andalusíes, reinos cristianos… cada época dejó su trazo en este dibujo."],
+   ["Y la historia no ha terminado.","La seguimos escribiendo entre todos."]
+  ]}
+]

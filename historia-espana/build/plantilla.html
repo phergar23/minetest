@@ -1,0 +1,150 @@
+<title>Historia de España</title>
+<meta name="description" content="La historia de España contada con dibujos que se trazan a mano y cobran vida, con narración y música.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Caveat:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: una columna tipo «sala de proyección» — cabecera, lámina 16:9 de cuaderno, barra de transporte con años, tira de capítulos */
+:root {
+  --bg: #e7e4de;
+  --surface: #f4f2ed;
+  --fg: #1d2130;
+  --muted: #5a5f6e;
+  --line: #cfcac0;
+  --accent: #b8322a;
+  --on-accent: #ffffff;
+  --paper: #fbf8f1;
+  --sub-bg: rgba(22, 24, 30, 0.78);
+  --font-hand: "Caveat", "Segoe Print", "Bradley Hand", cursive;
+  --font-ui: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14161b; --surface: #1d2027; --fg: #ebe8e1; --muted: #a2a6b0; --line: #30343d;
+    --accent: #e3634f; --on-accent: #1a0d0a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14161b; --surface: #1d2027; --fg: #ebe8e1; --muted: #a2a6b0; --line: #30343d;
+  --accent: #e3634f; --on-accent: #1a0d0a; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 16px; line-height: 1.5; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; display: grid; gap: 16px; }
+.head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 24px; }
+.head h1 { margin: 0; font-family: var(--font-hand); font-weight: 700; font-size: clamp(2.3rem, 5vw, 3.4rem); line-height: 1; text-wrap: balance; }
+.head h1 em { font-style: normal; color: var(--accent); }
+.lede { margin: 0; color: var(--muted); font-size: 0.95rem; max-width: 60ch; }
+
+.player { display: grid; gap: 10px; min-width: 0; }
+.stage {
+  position: relative; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 10px;
+  background-color: var(--paper);
+  background-image: var(--paper-img, none), radial-gradient(ellipse at center, rgba(255,255,255,0) 60%, rgba(120,100,70,0.13) 100%);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04), 0 12px 32px -18px rgba(20,20,30,0.45);
+  container-type: inline-size; cursor: pointer; user-select: none; -webkit-user-select: none;
+}
+.stage svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; will-change: transform; }
+.stage text { font-family: var(--font-hand); }
+.subs { position: absolute; left: 0; right: 0; bottom: 1.7cqw; display: flex; justify-content: center; pointer-events: none; padding-inline: 6cqw; }
+.subs span {
+  background: var(--sub-bg); color: #fff; font-family: var(--font-ui); font-size: clamp(12px, 1.8cqw, 30px); line-height: 1.32;
+  padding: 0.3em 0.7em; border-radius: 0.35em; text-align: center; max-width: 88cqw; text-wrap: balance;
+}
+.big {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 2px;
+  padding: 1.2cqw 2.6cqw 1.4cqw; border: 0; border-radius: 1.2cqw; cursor: pointer;
+  background: rgba(22, 24, 30, 0.82); color: #fff; font-family: var(--font-ui); box-shadow: 0 10px 40px -10px rgba(0,0,0,0.5);
+  opacity: 0; transition: opacity .3s, transform .15s;
+}
+.stage.ready .big { opacity: 1; }
+.big:hover { transform: translate(-50%, -50%) scale(1.03); }
+.big:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.big-ico { width: clamp(38px, 6cqw, 76px); aspect-ratio: 1; border-radius: 50%; background: #b8322a; display: grid; place-items: center; font-size: clamp(16px, 2.4cqw, 30px); padding-left: 0.15em; }
+.big-txt { font-family: var(--font-hand); font-weight: 700; font-size: clamp(24px, 4.2cqw, 58px); line-height: 1.05; }
+.big-sub { font-size: clamp(11px, 1.3cqw, 16px); color: #d9d6cf; }
+
+.bar-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ctl {
+  flex: none; width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+  display: grid; place-items: center; cursor: pointer; font: 700 13px/1 var(--font-ui);
+}
+.ctl svg { width: 20px; height: 20px; fill: currentColor; }
+.ctl:hover { border-color: var(--muted); }
+.ctl:focus-visible, .track:focus-visible, .caps button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.ctl.tog { opacity: 0.55; }
+.ctl.tog.on { opacity: 1; border-color: var(--accent); color: var(--accent); }
+#play { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.track { position: relative; flex: 1 1 auto; min-width: 0; height: 40px; cursor: pointer; touch-action: none; }
+.segs { position: absolute; left: 0; right: 0; top: 10px; height: 8px; display: flex; gap: 2px; }
+.seg { background: var(--line); border-radius: 2px; position: relative; min-width: 0; }
+.seg span { position: absolute; left: 0; top: 12px; font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fill { position: absolute; left: 0; top: 10px; height: 8px; width: 0; background: var(--accent); border-radius: 2px; mix-blend-mode: normal; opacity: 0.9; pointer-events: none; }
+.time { flex: none; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.9rem; min-width: 7.5em; text-align: right; }
+@container (max-width: 1px) { .x {} }
+@media (max-width: 760px) { .seg span { display: none; } .track { height: 28px; } .segs, .fill { top: 10px; } }
+@media (max-width: 480px) { .time { display: none; } .ctl { width: 36px; height: 36px; } }
+
+.caps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 8px; }
+.caps button {
+  width: 100%; height: 100%; display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; gap: 0 8px; text-align: left;
+  padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; font: inherit;
+}
+.caps .yr { font-family: var(--font-hand); font-weight: 700; font-size: 1.35rem; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; }
+.caps .tm { font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; align-self: center; }
+.caps .nm { grid-column: 1 / -1; font-size: 0.92rem; font-weight: 700; line-height: 1.25; }
+.caps button:hover { border-color: var(--muted); }
+.caps button.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.note { margin: 0; color: var(--muted); font-size: 0.85rem; max-width: 75ch; }
+.msg { margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--surface); border: 1px solid var(--accent); font-size: 0.9rem; }
+
+/* modo de renderizado a vídeo */
+.render body { background: #000; }
+.render .wrap { max-width: none; padding: 0; gap: 0; }
+.render .head, .render .bar-row, .render .caps, .render .note, .render .big, .render .msg { display: none !important; }
+.render .stage { width: 100vw; height: 100vh; aspect-ratio: auto; border-radius: 0; box-shadow: none; }
+@media (prefers-reduced-motion: reduce) { .big { transition: none; } }
+</style>
+
+<main class="wrap">
+  <header class="head">
+    <h1>Historia de <em>España</em></h1>
+    <p class="lede">De Atapuerca a hoy en 14 capítulos, dibujada a mano ante tus ojos. Ocho minutos y medio con voz y música.</p>
+  </header>
+  <section class="player" aria-label="Animación de la historia de España">
+    <div class="stage" id="stage">
+      <svg id="svg" viewBox="0 0 1600 900" role="img" aria-label="Lámina de dibujo animada; los subtítulos reproducen la narración.">
+        <defs></defs>
+        <g id="scenes"></g>
+        <g id="hand"></g>
+      </svg>
+      <div class="subs" id="subs" aria-live="polite" hidden><span></span></div>
+      <button class="big" id="big" type="button">
+        <span class="big-ico" aria-hidden="true">▶</span>
+        <span class="big-txt">Ver la historia</span>
+        <span class="big-sub">8 min y medio · activa el sonido</span>
+      </button>
+    </div>
+    <div class="bar-row">
+      <button id="play" class="ctl" type="button" aria-label="Reproducir"></button>
+      <div class="track" id="track" role="slider" tabindex="0" aria-label="Posición en la historia" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+        <div class="segs" id="segs"></div>
+        <div class="fill" id="fill"></div>
+      </div>
+      <span class="time" id="time">0:00</span>
+      <button id="cc" class="ctl tog on" type="button" aria-pressed="true" title="Subtítulos">CC</button>
+      <button id="snd" class="ctl tog on" type="button" aria-pressed="true" title="Sonido del lápiz" aria-label="Sonido del lápiz"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.3V21h3.7L18 9.7 14.3 6 3 17.3zm17.7-10.2a1 1 0 0 0 0-1.4l-2.4-2.4a1 1 0 0 0-1.4 0l-1.8 1.8 3.7 3.7 1.9-1.7z"/></svg></button>
+      <button id="fs" class="ctl" type="button" title="Pantalla completa" aria-label="Pantalla completa"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5v2H6v3H4zm10-5h6v5h-2V6h-4V4zM6 15v3h3v2H4v-5h2zm12 0h2v5h-5v-2h3v-3z"/></svg></button>
+    </div>
+    <p class="msg" id="msg" hidden></p>
+  </section>
+  <ol class="caps" id="caps" aria-label="Capítulos"></ol>
+  <p class="note">Narración con voz sintética en español y música de guitarra generada por ordenador; el sonido del lápiz se crea en tu navegador. Barra espaciadora: pausa · flechas: ±5 s · C: subtítulos.</p>
+</main>
+<audio id="audio" preload="auto" src="historia-espana.mp3"></audio>
+<script type="application/json" id="tl-data">__TL__</script>
+<script type="application/json" id="guion-data">__GUION__</script>
+<script>
+__MOTOR__
+__ESCENAS__
+__APP__
+</script>

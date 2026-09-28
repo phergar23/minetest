@@ -1,0 +1,6 @@
+models
+tts_cache/
+out/
+fonts/
+shots/
+*.log
