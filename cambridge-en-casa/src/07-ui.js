@@ -154,8 +154,9 @@ function todayHtml() {
   const now = new Date(), planned = todaySkill(st), rest = planned === 'rest';
   const pick = genPick(st), g = S.gen[st.id];
   const pend = pendingFor(st.id), today = todaysFor(st.id);
-  const nb = S.notebooks[st.id]; const qn = nb?.queue?.length || 0;
-  const mins = ['writing', 'speaking'].includes(pick.skill) ? (pick.skill === 'writing' ? (st.level === 'B2' ? 40 : 30) : (st.level === 'B2' ? 15 : 12)) : sessionMinutes(st.level, pick.parts);
+  const examMin = pick.skill === 'writing' ? 15 : pick.skill === 'speaking' ? (st.level === 'B2' ? 14 : 12) : sessionMinutes(st.level, pick.parts);
+  const mins = GRAMMAR_MIN + examMin, maxMin = +st.minutes || 20;
+  const topic = pickGrammarTopic(st);
   const pools = POOLS[st.level];
   const candidates = pick.skill === 'mock' ? examOrder(st.level, Array.from(new Set([...pools.use, ...pools.reading, ...pools.listening]))) : (pools[pick.skill] || []);
   const others = studentList().filter(s => s.id !== st.id);
@@ -171,7 +172,7 @@ function todayHtml() {
     <div class="routine">
       <div><b>Corrige la de ayer</b>Foto de la hoja de respuestas o márcalas tú. La app corrige y explica.</div>
       <div><b>Imprime la corrección</b>Original corregido, por qué falló y ejercicios de refuerzo.</div>
-      <div><b>Genera la de hoy</b>Adaptada a sus errores. Imprime ejercicios + hoja de respuestas.</div>
+      <div><b>Genera la de hoy</b>5 min de gramática + práctica de examen (máx. ${maxMin} min). Imprime ejercicios + hoja.</div>
     </div>`;
   if (pend.length) {
     html += `<div class="notice warn stack" style="gap:8px"><b>Pendiente de corregir</b>${pend.slice(0, 3).map(s => `<div class="spread"><span>${esc(SKILLS[s.skill]?.es)} · ${esc(niceDate(s.dateKey))}</span>${btn('Corregir', `data-open="${s.id}" data-tab="correct"`, '', 'check')}</div>`).join('')}</div>`;
@@ -185,7 +186,7 @@ function todayHtml() {
   }
 
   html += `<section class="card stack" id="gen-box">
-    <div class="spread"><h3 class="h3">${today.length ? 'Generar otra sesión' : 'Generar la sesión de hoy'}</h3><span class="pill plain">≈ ${mins} min${qn && pick.skill !== 'speaking' ? ' + 5 de repaso' : ''}</span></div>
+    <div class="spread"><h3 class="h3">${today.length ? 'Generar otra sesión' : 'Generar la sesión de hoy'}</h3><span class="pill ${mins > maxMin ? 'todo' : 'plain'}">≈ ${mins} min · ${GRAMMAR_MIN} de gramática + ${examMin}${mins > maxMin ? ` · pasa de ${maxMin}` : ''}</span></div>
     <div class="stack" style="gap:8px">
       <span class="small muted">Destreza</span>
       <div class="chips" role="group" aria-label="Destreza">${SKILL_KEYS.map(k => `<button type="button" class="chip" data-skill="${k}" aria-pressed="${pick.skill === k}">${esc(SKILLS[k].es)}${k === planned ? ' <small>plan</small>' : ''}</button>`).join('')}</div>
@@ -193,13 +194,13 @@ function todayHtml() {
   if (candidates.length) {
     const last = lastDoneMap(st.id);
     html += `<div class="stack" style="gap:8px">
-      <span class="small muted">Partes del examen (elegidas automáticamente por las menos practicadas; puedes cambiarlas)</span>
+      <span class="small muted">Partes del examen (elegidas automáticamente entre las menos practicadas para no pasar de ${maxMin} min; puedes cambiarlas)</span>
       <div class="chips" role="group" aria-label="Partes">${candidates.map(id => { const P = ex.parts[id]; return `<button type="button" class="chip" data-part="${id}" aria-pressed="${pick.parts.includes(id)}" title="${esc(P.es)}${last[id] ? ' · última vez ' + esc(shortDate(dateKey(new Date(last[id])))) : ' · nunca'}">${partShort(id, P)} · ${esc(P.title)}<small>${P.minutes}′</small></button>`; }).join('')}</div>
     </div>`;
   }
   const dlist = pick.skill === 'writing' ? [`W${nextWritingPart(st)}`] : pick.parts;
   const dtxt = dlist.length ? Array.from(new Set(dlist.map(id => DIFF_ES[diffOf(st, id)]))).join(' / ') : DIFF_ES[2];
-  html += `<div class="meta-line"><span>Dificultad: <b>${esc(dtxt)}</b></span><span>Repaso de errores: <b>${pick.skill === 'speaking' ? '—' : Math.min(6, qn) + ' ítems'}</b></span>${pick.skill === 'writing' ? `<span>Toca: <b>Writing Part ${nextWritingPart(st)}</b></span>` : ''}</div>`;
+  html += `<div class="meta-line"><span>Dificultad: <b>${esc(dtxt)}</b></span><span>Gramática de hoy: <b>${esc(topic.es)}</b></span>${pick.skill === 'writing' ? `<span>Toca: <b>Writing Part ${nextWritingPart(st)}</b></span>` : ''}</div>`;
   if (g && (g.running || g.error)) {
     html += `<div class="stack" style="gap:8px"><div class="steps">${g.steps.map(s => `<div class="step ${s.state}"><span class="dot" aria-hidden="true"></span><span>${esc(s.label)}${s.state === 'error' ? ` — <span class="muted">${esc(s.msg || '')}</span>` : ''}</span></div>`).join('')}</div>
       ${g.running ? `<p class="small muted">Claude está escribiendo textos originales y comprobando cada respuesta. Suele tardar 1–3 minutos; puedes seguir usando la app.</p>` : ''}
@@ -283,6 +284,7 @@ const gapMark = s => s.replace(/\[\[(\d+)\]\]/g, (m, n) => `<span class="gap">($
 function previewHtml(sess) {
   const ex = EXAMS[sess.level];
   let h = '<div class="paper">';
+  if (sess.grammar) { const g = sess.grammar; h += `<h5>Gramática del día · ${esc(g.title)}</h5>${paraHtml(g.explanation)}${(g.forms || []).length ? `<ul>${g.forms.map(f => `<li><b>${esc(f.form)}</b> · <i>${esc(f.example)}</i></li>`).join('')}</ul>` : ''}${g.tip ? `<p class="ins">Ojo: ${esc(g.tip)}</p>` : ''}<ol>${g.items.map(r => `<li>${esc(r.prompt)}${r.options ? ` <span class="opt">${Object.entries(r.options).map(([k, v]) => `${k} ${esc(v)}`).join(' · ')}</span>` : ''}</li>`).join('')}</ol><hr class="sep">`; }
   if (sess.review) h += `<h5>Warm-up · repaso</h5><ol>${sess.review.items.map(r => `<li>${esc(r.prompt)}${r.options ? ` <span class="opt">${Object.entries(r.options).map(([k, v]) => `${k} ${esc(v)}`).join(' · ')}</span>` : ''}</li>`).join('')}</ol><hr class="sep">`;
   if (sess.skill === 'writing') {
     const w = sess.writing || {};
@@ -337,14 +339,39 @@ function answerRows(sess, items) {
   }).join('');
 }
 
+function photoBox(sess, busy) {
+  if (S.imagesOk) return `<div class="file-drop">${ICON.cam.replace('<svg', '<svg width="20" height="20"')}<span><b>Foto de la hoja de respuestas</b>: Claude lee las respuestas y rellena la plantilla. Revísala antes de corregir.</span><input type="file" id="sheet-photo" accept="image/jpeg,image/png,image/webp" multiple>${btn('Leer foto', `data-read-photo="${sess.id}" ${busy ? 'disabled' : ''}`, '')}</div>`;
+  return `<div class="notice small"><b>Leer desde foto no está disponible aquí.</b> En esta vista de Claude la página no puede enviar imágenes a Claude. Si abres la app en un dispositivo o app de Claude que lo permita, el botón de la foto aparecerá solo en este recuadro. Mientras tanto, usa la <b>entrada rápida</b>: escribe las letras seguidas de cada parte (p. ej. <span class="score">BCADBBAC</span>) y pulsa Intro para pasar al siguiente hueco.</div>`;
+}
+
+function answerGroups(sess, groups) {
+  let h = '';
+  for (const [title, its, pid] of groups) {
+    if (!its.length) continue;
+    const letters = its.filter(i => i.type === 'letter');
+    const quick = letters.length >= 3 ? `<label class="field" style="max-width:420px"><span>Entrada rápida: letras seguidas (${letters.length}; usa - para una en blanco)</span><input data-quick="${esc(pid)}" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="p. ej. ${'BCADBBACDA'.slice(0, letters.length)}"></label>` : '';
+    h += `<div class="part-block"><h4>${esc(title)}</h4>${quick}<div class="ans-grid">${answerRows(sess, its)}</div></div>`;
+  }
+  return h;
+}
+
+function itemGroups(sess, items) {
+  const ex = EXAMS[sess.level], groups = [];
+  if (sess.grammar) groups.push([`Grammar · ${sess.grammar.title || sess.grammar.topic}`, items.filter(i => i.grammar), 'GR']);
+  if (sess.review) groups.push(['Warm-up · repaso', items.filter(i => i.review), 'RV']);
+  for (const part of sess.parts || []) { const P = ex.parts[part.id]; groups.push([`${partShort(part.id, P)} · ${P.title}`, items.filter(i => i.pid === part.id), part.id]); }
+  return groups;
+}
+
 function correctHtml(sess) {
-  const ex = EXAMS[sess.level], items = sessionItems(sess), busy = S.busy[sess.id];
-  const photo = S.imagesOk ? `<div class="file-drop">${ICON.cam.replace('<svg', '<svg width="20" height="20"')}<span><b>Foto de la hoja de respuestas</b>: Claude lee las respuestas y rellena la plantilla. Revísala antes de corregir.</span><input type="file" id="sheet-photo" accept="image/jpeg,image/png,image/webp" multiple>${btn('Leer foto', `data-read-photo="${sess.id}" ${busy ? 'disabled' : ''}`, '')}</div>` : '';
+  const items = sessionItems(sess), busy = S.busy[sess.id];
+  const quickItems = answerGroups(sess, itemGroups(sess, items.filter(i => i.grammar || i.review)));
   if (sess.skill === 'speaking') {
     const d = draftOf(sess.id);
     const r = (k, l, h) => `<label class="range"><span><b>${l}</b> <span class="muted small">${h}</span></span><b class="score" id="v-${k}">${d['sp_' + k] ?? 3}</b><input type="range" min="0" max="5" step="1" id="r-${k}" data-sp="${k}" value="${d['sp_' + k] ?? 3}"></label>`;
     return `<div class="stack">
-      <p class="muted">Después de hacer el oral, puntúa del 0 al 5 y apunta los errores que oíste (en español o inglés, tal cual). Claude lo convierte en feedback, errores del cuaderno y ejercicios.</p>
+      ${quickItems ? `<p class="muted small">Primero las respuestas de la gramática del día (las escribió en su hoja):</p>${quickItems}<hr class="sep">` : ''}
+      <p class="muted">Después del oral, puntúa del 0 al 5 y apunta los errores que oíste (en español o inglés, tal cual). Claude lo convierte en feedback, errores del cuaderno y ejercicios.</p>
       <div class="wr-crit">${r('gv', 'Grammar & Vocabulary', 'variedad y corrección')}${r('dm', 'Discourse', 'respuestas largas y organizadas')}${r('pr', 'Pronunciation', 'se entiende bien')}${r('ic', 'Interaction', 'pregunta, responde, negocia')}</div>
       <label class="field"><span>Notas: errores que has oído, frases que le faltaron, cosas que hizo bien</span><textarea id="sp-notes" data-spnotes="1" placeholder="Ej.: dijo «I am agree», «people is»; en la parte 2 describió pero no comparó; buena fluidez en la 4.">${esc(d.sp_notes || '')}</textarea></label>
       <div class="row">${btn(busy ? 'Generando feedback…' : 'Guardar y generar feedback', `data-grade-speaking="${sess.id}" ${busy ? 'disabled' : ''}`, 'primary big', 'check')}</div>
@@ -353,25 +380,20 @@ function correctHtml(sess) {
   if (sess.skill === 'writing') {
     const w = sess.writing || {}, d = draftOf(sess.id);
     const choice = w.type === 'choice' ? `<div class="stack" style="gap:6px"><span class="small muted">¿Qué tarea eligió?</span><div class="chips">${(w.options || []).map((o, i) => `<button type="button" class="chip" data-wchoice="${i}" aria-pressed="${(+d.w_choice || 0) === i}">Pregunta ${i + 2} · ${esc(o.type)}</button>`).join('')}</div></div>` : '';
-    const rv = items.filter(i => i.review);
     return `<div class="stack">
+      ${quickItems ? `<p class="muted small">Respuestas de la gramática del día (las escribió en su hoja):</p>${quickItems}<hr class="sep">` : ''}
       ${choice}
-      ${S.imagesOk ? `<div class="file-drop">${ICON.cam.replace('<svg', '<svg width="20" height="20"')}<span><b>Fotos de la redacción</b> (hasta ${S.imgMax}): Claude transcribe el texto a mano y lo corrige.</span><input type="file" id="wr-photo" accept="image/jpeg,image/png,image/webp" multiple></div><p class="small muted">O, si lo prefieres, escríbelo o pégalo aquí:</p>` : ''}
+      ${S.imagesOk ? `<div class="file-drop">${ICON.cam.replace('<svg', '<svg width="20" height="20"')}<span><b>Fotos de la redacción</b> (hasta ${S.imgMax}): Claude transcribe el texto a mano y lo corrige.</span><input type="file" id="wr-photo" accept="image/jpeg,image/png,image/webp" multiple></div><p class="small muted">O, si lo prefieres, escríbelo o pégalo aquí:</p>` : '<p class="small muted">Leer la redacción desde una foto no está disponible en esta vista de Claude. Cópiala aquí tal cual, con sus errores (o que la teclee el propio alumno).</p>'}
       <label class="field"><span>Texto de ${esc(S.students[sess.studentId]?.name || '')}</span><textarea id="wr-text" data-wrtext="1" placeholder="Copia aquí la redacción tal cual, con sus errores.">${esc(d.w_text || '')}</textarea></label>
-      ${rv.length ? `<div class="part-block"><h4>Warm-up · repaso</h4><div class="ans-grid">${answerRows(sess, rv)}</div></div>` : ''}
       <div class="row">${btn(busy ? 'Corrigiendo…' : 'Corregir redacción', `data-grade-writing="${sess.id}" ${busy ? 'disabled' : ''}`, 'primary big', 'check')}</div>
     </div>`;
   }
-  let h = `<div class="stack">${photo}<p class="small muted">Toca la letra marcada o escribe la palabra. Lo que dejes vacío cuenta como «en blanco».</p>`;
-  const groups = [];
-  if (sess.review) groups.push(['Warm-up · repaso', items.filter(i => i.review)]);
-  for (const part of sess.parts || []) { const P = ex.parts[part.id]; groups.push([`${P.paper === 'Listening' ? 'Listening' : 'Reading'} ${P.label} · ${P.title}`, items.filter(i => i.pid === part.id)]); }
-  for (const [title, its] of groups) h += `<div class="part-block"><h4>${esc(title)}</h4><div class="ans-grid">${answerRows(sess, its)}</div></div>`;
+  let h = `<div class="stack">${photoBox(sess, busy)}<p class="small muted">Toca la letra marcada o escribe la palabra; lo que dejes vacío cuenta como «en blanco». También puede rellenarlo el propio alumno al terminar, igual que pasa las respuestas a la hoja en el examen.</p>`;
+  h += answerGroups(sess, itemGroups(sess, items));
   h += `<div class="row">${btn(busy ? 'Corrigiendo…' : 'Corregir y generar refuerzo', `data-grade="${sess.id}" ${busy ? 'disabled' : ''}`, 'primary big', 'check')}</div></div>`;
   return h;
 }
 
-/* ---------- Results ---------- */
 function resultsHtml(sess) {
   const r = sess.results || {}, fb = sess.feedback || {}, ex = EXAMS[sess.level];
   let h = '<div class="stack">';
@@ -385,14 +407,15 @@ function resultsHtml(sess) {
     if (fb.strengths?.length) h += `<div><b>Bien:</b><ul>${fb.strengths.map(s => `<li>${esc(s)}</li>`).join('')}</ul></div>`;
     if (fb.improvements?.length) h += `<div><b>Mejorar:</b><ul>${fb.improvements.map(s => `<li>${esc(s)}</li>`).join('')}</ul></div>`;
     if (fb.corrections?.length) h += `<div class="part-block"><h4>Correcciones</h4>${fb.corrections.map((c, i) => `<div class="res ko"><span class="n">${i + 1}</span><span><span class="given"><s>${esc(c.original)}</s></span> → <span class="key">${esc(c.corrected)}</span><br><span class="muted small">${esc(c.why)}</span></span></div>`).join('')}</div>`;
+    if (r.grammar && sess.grammar) h += `<div class="part-block"><h4>Gramática · ${esc(sess.grammar.title)} · ${r.grammar.score}/${r.grammar.max}</h4>${sessionItems(sess).filter(i => i.grammar).map(it => { const m = r.marks?.[it.key] || { status: 'blank' }, g = sess.answers?.[it.key] || '', ok = m.status === 'correct'; return `<div class="res ${ok ? 'ok' : 'ko'}"><span class="n">${esc(it.n)}</span><span>${ok ? `<span class="given">${esc(givenText(it, g))}</span>` : `<span class="given">${g ? `<s>${esc(givenText(it, g))}</s>` : '<i class="muted">en blanco</i>'}</span> → <span class="key">${esc(keyText(it))}</span><br><span class="muted small">${esc(it.q.explanation || '')}</span>`}</span></div>`; }).join('')}</div>`;
     if (fb.improved) h += `<details class="more"><summary>Texto mejorado</summary><div class="paper" style="margin-top:8px">${paraHtml(fb.improved)}</div></details>`;
   } else {
-    h += `<div class="tiles">${Object.entries(r.byPart || {}).map(([pid, b]) => `<div class="tile"><b>${b.score}/${b.max}</b><span>${esc(ex.parts[pid].paper === 'Listening' ? 'Listening' : 'Reading')} ${esc(ex.parts[pid].label)} · ${pct(b.score, b.max)}%</span></div>`).join('')}${r.review ? `<div class="tile"><b>${r.review.score}/${r.review.max}</b><span>Warm-up (repaso)</span></div>` : ''}</div>`;
+    h += `<div class="tiles">${Object.entries(r.byPart || {}).map(([pid, b]) => `<div class="tile"><b>${b.score}/${b.max}</b><span>${esc(ex.parts[pid].paper === 'Listening' ? 'Listening' : 'Reading')} ${esc(ex.parts[pid].label)} · ${pct(b.score, b.max)}%</span></div>`).join('')}${r.grammar ? `<div class="tile"><b>${r.grammar.score}/${r.grammar.max}</b><span>Gramática del día</span></div>` : ''}${r.review ? `<div class="tile"><b>${r.review.score}/${r.review.max}</b><span>Warm-up (repaso)</span></div>` : ''}</div>`;
     const items = sessionItems(sess);
     const groups = {};
     for (const it of items) (groups[it.pid] = groups[it.pid] || []).push(it);
     for (const [pid, its] of Object.entries(groups)) {
-      const title = pid === 'RV' ? 'Warm-up · repaso' : `${ex.parts[pid].label} · ${ex.parts[pid].title}`;
+      const title = pid === 'RV' ? 'Warm-up · repaso' : pid === 'GR' ? `Gramática · ${sess.grammar?.title || ''}` : `${partShort(pid, ex.parts[pid])} · ${ex.parts[pid].title}`;
       h += `<div class="part-block"><h4>${esc(title)}</h4>${its.map(it => {
         const m = r.marks?.[it.key] || { status: 'blank' }, g = sess.answers?.[it.key] || '', ok = m.status === 'correct';
         const e = fb.errors?.[it.key] || {};
@@ -469,6 +492,9 @@ function progressHtml() {
     for (const s of done) { const k = s.skill === 'mock' ? 'mock' : s.skill; (bySkill[k] = bySkill[k] || []).push(s.results?.pct || 0); }
     h += `<div><h3 class="h3" style="margin-bottom:8px">Media por destreza (últimas 4)</h3><div class="skill-bars">${SKILL_KEYS.filter(k => bySkill[k]).map(k => { const a = bySkill[k].slice(0, 4); const v = Math.round(a.reduce((t, x) => t + x, 0) / a.length); return `<div class="sb"><span>${esc(SKILLS[k].es)}</span><span class="track"><span style="width:${v}%"></span></span><span class="score">${v}%</span></div>`; }).join('')}</div></div>`;
   } else h += '<p class="empty">Cuando corrijas la primera sesión verás aquí su evolución.</p>';
+  const allG = [...GRAMMAR.B1, ...GRAMMAR.B2, ...GRAMMAR.C1];
+  const doneG = (st.grammarDone || []).map(id => allG.find(t => t.id === id)).filter(Boolean);
+  h += `<div><h3 class="h3" style="margin-bottom:6px">Gramática vista (${doneG.length})</h3>${doneG.length ? `<div class="chips">${doneG.map(t => `<span class="pill plain">${esc(t.es)}</span>`).join('')}</div>` : '<p class="small muted">Cada sesión trae un punto de gramática nuevo; aquí verás los que ya ha trabajado.</p>'}<p class="small muted" style="margin-top:6px">Próximo: <b>${esc(pickGrammarTopic(st).es)}</b></p></div>`;
   const diffs = Object.entries(st.difficulty || {});
   if (diffs.length) h += `<div><h3 class="h3" style="margin-bottom:6px">Dificultad actual por parte</h3><div class="chips">${diffs.map(([k, v]) => `<span class="pill plain">${esc(k.startsWith('W') ? 'Writing P' + k.slice(1) : (EXAMS[st.level].parts[k] ? (EXAMS[st.level].parts[k].paper === 'Listening' ? 'Listening ' : 'Reading ') + EXAMS[st.level].parts[k].label : k))} · ${esc(DIFF_ES[v])}</span>`).join('')}</div><p class="small muted" style="margin-top:6px">Sube un nivel cuando saca 85 % o más en esa parte y baja si saca menos del 50 %.</p></div>`;
   return h + '</section>';
@@ -485,7 +511,7 @@ function settingsHtml() {
       <div class="form-grid">
         <label class="field"><span>Nombre</span><input id="f-name-${esc(st.id)}" value="${esc(st.name)}"></label>
         <label class="field"><span>Nivel</span><select id="f-level-${esc(st.id)}"><option value="B2" ${st.level === 'B2' ? 'selected' : ''}>B2 First for Schools</option><option value="B1" ${st.level === 'B1' ? 'selected' : ''}>B1 Preliminary for Schools</option></select></label>
-        <label class="field"><span>Minutos por sesión</span><input id="f-min-${esc(st.id)}" type="number" min="15" max="75" step="5" value="${esc(st.minutes || 30)}"></label>
+        <label class="field"><span>Duración máxima (min, incluye 5 de gramática)</span><input id="f-min-${esc(st.id)}" type="number" min="15" max="60" step="5" value="${esc(st.minutes || 20)}"></label>
         <label class="field"><span>Edad</span><input id="f-age-${esc(st.id)}" type="number" min="8" max="20" value="${esc(st.age || '')}"></label>
       </div>
       <label class="field"><span>Intereses (opcional)</span><input id="f-int-${esc(st.id)}" value="${esc(st.interests || '')}" placeholder="fútbol, videojuegos, dibujo, animales…"></label>
@@ -530,8 +556,8 @@ function renderSide() {
     h += `<section class="card stack"><div class="spread"><h3 class="h3">Puntos débiles de ${esc(st.name)}</h3></div>`;
     if (weak.length) {
       h += `<div class="weak">${weak.map(t => { const tot = (t.misses || 0) + (t.hits || 0), rate = tot ? Math.round(100 * (t.misses || 0) / tot) : 0; return `<div class="weak-row"><span>${esc(tagEs(t.tag))}${t.examples?.[0]?.point ? ` <span class="muted small">· ${esc(t.examples[0].point)}</span>` : ''}</span><span class="legend-cat">${t.misses} fallos · ${t.hits || 0} ok</span><span class="bar"><span style="width:${rate}%"></span></span></div>`; }).join('')}</div>
-        <p class="small muted">Las próximas sesiones incluyen estos puntos y un calentamiento con sus errores. Un error sale del repaso tras acertarlo dos veces.</p>`;
-    } else h += '<p class="small muted">Aparecerán al corregir. Cada fallo se clasifica (vocabulario, gramática, comprensión, despiste, formato o tiempo) y vuelve en los calentamientos hasta que lo domine.</p>';
+        <p class="small muted">Las próximas sesiones meten preguntas sobre estos puntos y el PDF de corrección trae ejercicios de refuerzo. Un error se da por dominado cuando acierta dos veces ese tipo de pregunta en sesiones posteriores.</p>`;
+    } else h += '<p class="small muted">Aparecerán al corregir. Cada fallo se clasifica (vocabulario, gramática, comprensión, despiste, formato o tiempo) y vuelve en las sesiones siguientes hasta que lo domine.</p>';
     h += `</section>`;
   }
   side.innerHTML = h;
@@ -672,7 +698,7 @@ document.addEventListener('click', async ev => {
     const id = d.saveSt, st = S.students[id]; if (!st) return;
     const v = k => $(`#f-${k}-${CSS.escape(id)}`)?.value;
     const plan = {}; [0, 1, 2, 3, 4, 5, 6].forEach(dw => { plan[dw] = $(`#f-plan-${CSS.escape(id)}-${dw}`)?.value || DEFAULT_PLAN[dw]; });
-    const body = Object.assign(clone(stripId(st)), { name: (v('name') || st.name).trim(), level: v('level') || st.level, minutes: Math.max(15, Math.min(75, +v('min') || 30)), age: +v('age') || null, interests: (v('int') || '').trim(), plan });
+    const body = Object.assign(clone(stripId(st)), { name: (v('name') || st.name).trim(), level: v('level') || st.level, minutes: Math.max(15, Math.min(60, +v('min') || 20)), age: +v('age') || null, interests: (v('int') || '').trim(), plan });
     if (body.level !== st.level) body.difficulty = {};
     await saveStudent(id, body); delete S.pick[id]; toast('Guardado'); renderAll(); return;
   }
@@ -680,10 +706,31 @@ document.addEventListener('click', async ev => {
 
 document.addEventListener('input', ev => {
   const t = ev.target, d = t.dataset;
+  if (d.quick != null) {
+    const sess = S.sessions[S.openId]; if (!sess) return;
+    const dr = draftOf(S.openId);
+    const letters = sessionItems(sess).filter(i => i.pid === d.quick && i.type === 'letter');
+    const chars = t.value.toUpperCase().replace(/\s+/g, '').split('');
+    letters.forEach((it, k) => {
+      const c = chars[k];
+      if (c === undefined) return;
+      dr[it.key] = it.letters.includes(c) ? c : '';
+      $$(`.loz[data-k="${CSS.escape(it.key)}"]`).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === dr[it.key])));
+    });
+    touchDraft(S.openId); return;
+  }
   if (d.k && t.tagName === 'INPUT') { const dr = draftOf(S.openId); dr[d.k] = t.value; touchDraft(S.openId); return; }
   if (d.wrtext) { const dr = draftOf(S.openId); dr.w_text = t.value; touchDraft(S.openId); return; }
   if (d.spnotes) { const dr = draftOf(S.openId); dr.sp_notes = t.value; touchDraft(S.openId); return; }
   if (d.sp) { const dr = draftOf(S.openId); dr['sp_' + d.sp] = +t.value; const o = $('#v-' + d.sp); if (o) o.textContent = t.value; touchDraft(S.openId); return; }
+});
+document.addEventListener('keydown', ev => {
+  const t = ev.target;
+  if (ev.key !== 'Enter' || t.tagName !== 'INPUT' || !(t.dataset.k || t.dataset.quick != null)) return;
+  ev.preventDefault();
+  const all = $$('#main input[data-k], #main input[data-quick]');
+  const i = all.indexOf(t);
+  if (all[i + 1]) all[i + 1].focus(); else t.blur();
 });
 document.addEventListener('change', ev => {
   const t = ev.target;
@@ -697,7 +744,7 @@ document.addEventListener('submit', async ev => {
   const name = $('#new-name').value.trim(), level = $('#new-level').value;
   if (!name) return;
   const id = tagKey(name) + '-' + Math.random().toString(36).slice(2, 5);
-  await saveStudent(id, { name, level, minutes: level === 'B2' ? 30 : 25, age: null, interests: '', plan: Object.assign({}, DEFAULT_PLAN), difficulty: {}, order: studentList().length + 1, createdAt: Date.now() });
+  await saveStudent(id, { name, level, minutes: 20, age: null, interests: '', plan: Object.assign({}, DEFAULT_PLAN), difficulty: {}, grammarDone: [], order: studentList().length + 1, createdAt: Date.now() });
   S.cur = id; S.view = 'today'; renderAll(); toast(`${name} añadido`);
 });
 

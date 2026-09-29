@@ -449,18 +449,14 @@ function renderTranscript(pdf, part) {
   pdf.sp(3);
 }
 
-function renderReview(pdf, review, mode) {
-  if (!review || !review.items?.length) return;
-  pdf.partHead('Warm-up', mode?.corr ? 'Repaso de errores anteriores' : 'Repaso de errores anteriores · 5 min');
-  if (!mode?.corr) pdf.rich([{ t: 'Repasa lo que fallaste en sesiones anteriores. Marca tus respuestas en la hoja de respuestas (sección Warm-up).', i: true, color: PC.grey }], { size: 9.5 });
-  pdf.sp(2);
-  for (const r of review.items) {
-    const key = `RV:${r.n}`, m = mode?.corr ? (mode.marks[key] || { status: 'blank' }) : null, g = mode?.corr ? String(mode.answers[key] || '') : '';
+function renderQuickItems(pdf, items, prefix, mode) {
+  for (const r of items) {
+    const key = `${prefix}:${r.n}`, m = mode?.corr ? (mode.marks[key] || { status: 'blank' }) : null, g = mode?.corr ? String(mode.answers[key] || '') : '';
     const prompt = str(r.prompt);
     if (r.type === 'choice') {
       mcqBlock(pdf, r.n, prompt, r.options || {}, Object.keys(r.options || {}), mode?.corr ? { key: r.answer, given: g } : {});
     } else {
-      pdf.need(14);
+      pdf.need(mode?.corr ? 14 : 16);
       const y0 = pdf.y;
       pdf.set('bold', 10.5, m ? (m.status === 'correct' ? PC.ok : PC.bad) : PC.ink); pdf.d.text(r.n, pdf.ML, y0 + 3.7);
       pdf.rich([{ t: prompt }], { x: pdf.ML + 9 });
@@ -468,15 +464,61 @@ function renderReview(pdf, review, mode) {
         pdf.rich(m.status === 'correct'
           ? [{ t: 'Tu respuesta: ', color: PC.grey }, { t: g, b: true, color: PC.ok }]
           : [{ t: 'Tu respuesta: ', color: PC.grey }, g ? { t: g, strike: true, color: PC.bad } : { t: '(en blanco)', i: true, color: PC.bad }, { t: '   Correcta: ', color: PC.grey }, { t: r.answer, b: true, color: PC.ok }], { x: pdf.ML + 9, size: 10 });
+      } else if (r.type === 'rewrite') {
+        pdf.need(8); pdf.d.setDrawColor(...PC.light); pdf.d.setLineWidth(0.3); pdf.d.line(pdf.ML + 9, pdf.y + 5, pdf.W - pdf.MR, pdf.y + 5); pdf.sp(6);
       }
       pdf.sp(2.5);
     }
     if (m && m.status !== 'correct' && r.explanation) { pdf.small(r.explanation, { x: pdf.ML + 9 }); pdf.sp(1.5); }
   }
+}
+
+function renderReview(pdf, review, mode) {
+  if (!review || !review.items?.length) return;
+  pdf.partHead('Warm-up', 'Repaso de errores anteriores');
+  pdf.sp(2);
+  renderQuickItems(pdf, review.items, 'RV', mode);
   pdf.sp(3);
 }
 
-/* ---------- documents ---------- */
+function renderGrammar(pdf, g, mode) {
+  if (!g) return;
+  const corr = !!(mode && mode.corr);
+  let right = corr ? 'Gramática del día' : 'Gramática del día · 5 min';
+  if (corr && mode.results?.grammar) right += `   ·   ${mode.results.grammar.score}/${mode.results.grammar.max}`;
+  pdf.partHead('Grammar', right);
+  pdf.rich([{ t: g.title || g.topic, b: true }], { size: 15 });
+  if (g.title && g.topic && g.title !== g.topic) pdf.rich([{ t: g.topic, color: PC.grey, i: true }], { size: 9.5 });
+  pdf.sp(2);
+  if (!corr) {
+    if (g.explanation) { pdf.rich([{ t: g.explanation }], { size: 10.5 }); pdf.sp(2.5); }
+    if (g.forms?.length) {
+      const rows = g.forms.filter(f => f.form || f.example);
+      const pad = 3, colA = 62, h = rows.reduce((t, f) => t + Math.max(pdf.height([{ t: f.form, b: true }], { size: 10, width: colA - 4 }), pdf.height([{ t: f.example, i: true }], { size: 10, x: pdf.ML + pad + colA, width: pdf.CW - colA - 2 * pad })) + 1.2, 0) + 2 * pad;
+      pdf.need(h + 2);
+      const y0 = pdf.y; pdf.d.setFillColor(...PC.fill); pdf.d.roundedRect(pdf.ML, y0, pdf.CW, h, 2, 2, 'F');
+      pdf.y = y0 + pad;
+      for (const f of rows) {
+        const yy = pdf.y;
+        pdf.rich([{ t: f.form, b: true }], { size: 10, x: pdf.ML + pad, width: colA - 4 });
+        const ya = pdf.y; pdf.y = yy;
+        pdf.rich([{ t: f.example, i: true }], { size: 10, x: pdf.ML + pad + colA, width: pdf.CW - colA - 2 * pad });
+        pdf.y = Math.max(pdf.y, ya) + 1.2;
+      }
+      pdf.y = y0 + h + 3;
+    }
+    if (g.examples?.length) { g.examples.forEach(e => pdf.rich([{ t: '- ' + e }], { size: 10, x: pdf.ML + 2 })); pdf.sp(2); }
+    if (g.tip) { pdf.box([{ t: 'Ojo: ', b: true }, { t: g.tip }], { size: 9.8 }); pdf.sp(1); }
+    pdf.h3('Practice');
+    pdf.rich([{ t: g.instruction || 'Complete the sentences.', b: true }], { size: 10 });
+    pdf.rich([{ t: g.onPage ? 'Escribe tus respuestas en esta hoja.' : 'Escribe tus respuestas en la hoja de respuestas (sección Grammar).', i: true, color: PC.grey }], { size: 9 });
+    pdf.sp(2);
+  }
+  renderQuickItems(pdf, g.items || [], 'GR', mode);
+  if (corr && g.tip) pdf.box([{ t: 'Recuerda: ', b: true }, { t: g.tip }], { size: 9.5 });
+  pdf.sp(3);
+}
+
 function pdfMeta(sess, what) {
   const st = S.students[sess.studentId] || { name: '' };
   const ex = EXAMS[sess.level];
@@ -496,13 +538,15 @@ function buildExamPdf(sess) {
   if (sess.skill === 'speaking') return buildSpeakingStudentPdf(sess, pdf);
   const listening = (sess.parts || []).some(p => p.id.startsWith('L'));
   pdf.title(`${SKILLS[sess.skill]?.es || ''} · ${st.name}`, `${ex.name} · ${niceDate(sess.dateKey)} · ${sess.parts.map(p => ex.parts[p.id].paper.split(' ')[0] + ' ' + ex.parts[p.id].label).join(', ')}`);
+  const examMin = sessionMinutes(sess.level, sess.parts.map(p => p.id));
   pdf.box([
     { t: 'Instrucciones: ', b: true },
-    { t: `tiempo recomendado ${sess.minutes || sessionMinutes(sess.level, sess.parts.map(p => p.id))} minutos${sess.review ? ' + 5 de calentamiento' : ''}. Lápiz y goma, sin diccionario ni ayuda. Escribe tus respuestas en la hoja de respuestas, como en el examen real${listening ? '. Listening: escucharás cada grabación dos veces' : ''}.` }
+    { t: `${sess.grammar ? `${GRAMMAR_MIN} minutos de gramática y luego ${examMin} de práctica de examen (total ${GRAMMAR_MIN + examMin})` : `tiempo recomendado ${examMin} minutos`}. Lápiz y goma, sin diccionario ni ayuda. Escribe tus respuestas en la hoja de respuestas, como en el examen real${listening ? '. Listening: escucharás cada grabación dos veces' : ''}.` }
   ], { size: 9.5 });
   pdf.sp(2);
+  if (sess.grammar) renderGrammar(pdf, sess.grammar, null);
   if (sess.review) renderReview(pdf, sess.review, null);
-  sess.parts.forEach((part, i) => { if (i > 0 || sess.review) pdf.page(); renderPart(pdf, sess, part, null); });
+  sess.parts.forEach((part, i) => { if (i > 0 || sess.grammar || sess.review) pdf.page(); renderPart(pdf, sess, part, null); });
   return pdf;
 }
 
@@ -558,6 +602,9 @@ function buildAnswerSheetPdf(sess, into) {
     });
     pdf.y += 3;
   };
+  if (sess.grammar) {
+    section('Grammar', 'Gramática del día', sess.grammar.items.map(r => r.type === 'choice' ? { n: r.n, kind: 'loz', letters: Object.keys(r.options || {}) } : { n: r.n, kind: 'long' }));
+  }
   if (sess.review) {
     section('Warm-up', 'Repaso', sess.review.items.map(r => r.type === 'choice' ? { n: r.n, kind: 'loz', letters: Object.keys(r.options || {}) } : { n: r.n, kind: 'long' }));
   }
@@ -583,9 +630,11 @@ function buildSolutionsPdf(sess) {
     pdf.h3('Tarea'); pdf.rich([{ t: writingTaskText(w, 0) }], { size: 10 }); pdf.sp(2);
     if (w.plan?.length) { pdf.h3('Plan sugerido'); w.plan.forEach(p => pdf.rich([{ t: '- ' + p }], { size: 10 })); pdf.sp(2); }
     if (w.model) { pdf.h3('Respuesta modelo'); pdf.rich([{ t: w.model }], { size: 10.5 }); pdf.small(`${wordCount(w.model)} palabras`); }
+    if (sess.grammar) renderReviewKey(pdf, sess.grammar, 'Grammar', sess.grammar.title || 'Gramática');
     if (sess.review) renderReviewKey(pdf, sess.review);
     return pdf;
   }
+  if (sess.grammar) renderReviewKey(pdf, sess.grammar, 'Grammar', sess.grammar.title || 'Gramática');
   if (sess.review) renderReviewKey(pdf, sess.review);
   for (const part of sess.parts || []) {
     const P = ex.parts[part.id];
@@ -606,11 +655,11 @@ function buildSolutionsPdf(sess) {
   return pdf;
 }
 
-function renderReviewKey(pdf, review) {
-  pdf.partHead('Warm-up', 'Repaso');
+function renderReviewKey(pdf, review, label = 'Warm-up', sub = 'Repaso') {
+  pdf.partHead(label, sub);
   for (const r of review.items) {
     const key = r.type === 'choice' ? `${r.answer} (${r.options?.[r.answer] || ''})` : r.answer;
-    pdf.need(10); pdf.rich([{ t: `${r.n}  `, b: true }, { t: key, b: true, color: PC.ok }], { size: 10.5 });
+    pdf.need(10); pdf.rich([{ t: `${r.n}  `, b: true }, { t: key, b: true, color: PC.ok }, (r.accept || []).length > 1 ? { t: `   · también: ${r.accept.filter(a => a !== normAns(r.answer)).join(', ')}`, color: PC.grey } : null].filter(Boolean), { size: 10.5 });
     if (r.explanation) pdf.small(r.explanation, { x: pdf.ML + 7 });
     pdf.sp(1);
   }
@@ -672,12 +721,14 @@ function buildCorrectionPdf(sess) {
     pdf.set('bold', 12, PC.ink); d.text(`${b.score}/${b.max}`, x, y0 + 13.5);
     x += 30; if (x > pdf.W - pdf.MR - 20) break;
   }
+  if (r.grammar) { pdf.set('normal', 8, PC.grey); d.text('Grammar', Math.min(x, pdf.W - pdf.MR - 22), y0 + 7); pdf.set('bold', 12, PC.ink); d.text(`${r.grammar.score}/${r.grammar.max}`, Math.min(x, pdf.W - pdf.MR - 22), y0 + 13.5); x += 30; }
   if (r.review) { pdf.set('normal', 8, PC.grey); d.text('Warm-up', Math.min(x, pdf.W - pdf.MR - 22), y0 + 7); pdf.set('bold', 12, PC.ink); d.text(`${r.review.score}/${r.review.max}`, Math.min(x, pdf.W - pdf.MR - 22), y0 + 13.5); }
   pdf.y = y0 + 24;
   if (fb.summary) { pdf.box([{ t: 'Comentario: ', b: true }, { t: fb.summary }], { size: 10 }); pdf.sp(2); }
   pdf.rich([{ t: 'Cómo leer esta corrección: ', b: true, color: PC.grey }, { t: 'en verde lo correcto; en rojo tachado tu respuesta cuando no era correcta, seguida de la buena.', color: PC.grey }], { size: 9 });
   pdf.sp(2);
   const mode = { corr: true, marks: r.marks || {}, answers: sess.answers || {}, results: r };
+  if (sess.grammar) renderGrammar(pdf, sess.grammar, mode);
   if (sess.review) renderReview(pdf, sess.review, mode);
   (sess.parts || []).forEach((part, idx) => {
     if (idx > 0 || pdf.y > 110) pdf.page();
@@ -734,8 +785,9 @@ function buildWritingPdf(sess, pdf) {
   const st = S.students[sess.studentId] || {};
   const ex = EXAMS[sess.level], w = sess.writing || {};
   pdf.title(`Writing · ${st.name}`, `${ex.name} · ${niceDate(sess.dateKey)} · Part ${w.part}`);
-  pdf.box([{ t: 'Instrucciones: ', b: true }, { t: `${sess.minutes || 40} minutos. Primero 5 minutos para planificar en el recuadro, luego escribe a lápiz en las líneas. Cuenta las palabras al final (${w.words}).` }], { size: 9.5 });
+  pdf.box([{ t: 'Instrucciones: ', b: true }, { t: `${sess.grammar ? `${GRAMMAR_MIN} minutos de gramática y luego ` : ''}15 minutos de writing: 3 para planificar en el recuadro y 12 para escribir a lápiz en las líneas. Cuenta las palabras al final (${w.words}).` }], { size: 9.5 });
   pdf.sp(2);
+  if (sess.grammar) { renderGrammar(pdf, Object.assign({}, sess.grammar, { onPage: true }), null); pdf.page(); }
   if (sess.review) { renderReview(pdf, sess.review, null); pdf.page(); }
   pdf.partHead(`Part ${w.part}`, w.part === 1 ? `Writing · ${w.type === 'email' ? 'Email' : 'Essay'}` : 'Writing · choose ONE task');
   if (w.type === 'choice') {
@@ -799,7 +851,9 @@ function buildWritingCorrectionPdf(sess) {
   if (fb.transcript) { pdf.h3('Tu texto'); pdf.rich([{ t: fb.transcript }], { size: 10, color: PC.grey }); }
   if (fb.improved) { pdf.h3('Tu texto mejorado', PC.omr); pdf.rich([{ t: fb.improved }], { size: 10.5 }); }
   if (w.model) { pdf.h3('Respuesta modelo'); pdf.rich([{ t: w.model }], { size: 10 }); }
-  if (sess.review) renderReview(pdf, sess.review, { corr: true, marks: reviewMarksObj(sess), answers: sess.answers || {} });
+  const qm = { corr: true, marks: sess.results?.marks || reviewMarksObj(sess), answers: sess.answers || {}, results: sess.results };
+  if (sess.grammar) renderGrammar(pdf, sess.grammar, qm);
+  if (sess.review) renderReview(pdf, sess.review, qm);
   renderRefuerzo(pdf, fb);
   return pdf;
 }
@@ -814,6 +868,7 @@ function buildSpeakingStudentPdf(sess, pdf) {
   const st = S.students[sess.studentId] || {};
   const sp = sess.speaking || {}, ex = EXAMS[sess.level];
   pdf.title(`Speaking · ${st.name}`, `${ex.name} · ${niceDate(sess.dateKey)} · hoja del alumno`);
+  if (sess.grammar) { pdf.box([{ t: 'Primero: ', b: true }, { t: `${GRAMMAR_MIN} minutos de gramática. Después, el examen oral.` }], { size: 9.5 }); pdf.sp(2); renderGrammar(pdf, Object.assign({}, sess.grammar, { onPage: true }), null); pdf.page(); }
   pdf.partHead('Part 2', ex.id === 'B2' ? 'Long turn · compare the photos' : 'Describe the photo');
   pdf.rich([{ t: sp.part2?.question || '', b: true }], { size: 13 }); pdf.sp(3);
   const y = pdf.y, w = (pdf.CW - 6) / 2;
@@ -879,6 +934,7 @@ function buildSpeakingExaminerPdf(sess) {
   if (sp.listenFor?.length) { pdf.h3('En qué fijarte al puntuar', PC.omr); sp.listenFor.forEach(l => pdf.rich([{ t: '- ' + l }], { size: 10 })); }
   pdf.h3('Criterios (0-5)');
   [['Grammar & Vocabulary', 'variedad y corrección de estructuras y palabras'], ['Discourse Management', 'respuestas largas, organizadas y con conectores'], ['Pronunciation', 'se entiende sin esfuerzo, entonación y acentos'], ['Interactive Communication', 'inicia, responde, pregunta al compañero, negocia']].forEach(([k, v]) => pdf.rich([{ t: k + ': ', b: true }, { t: v }], { size: 10 }));
+  if (sess.grammar) { pdf.page(); renderReviewKey(pdf, sess.grammar, 'Grammar', 'Soluciones de la gramática del día'); }
   return pdf;
 }
 
@@ -902,6 +958,7 @@ function buildSpeakingCorrectionPdf(sess) {
     fb.corrections.forEach((c, i) => { pdf.need(12); pdf.rich([{ t: `${i + 1}  `, b: true }, { t: str(c.original), strike: true, color: PC.bad }, { t: '  ->  ' }, { t: str(c.corrected), b: true, color: PC.ok }], { size: 10 }); if (c.why) pdf.small(str(c.why), { x: pdf.ML + 7 }); });
   }
   if (fb.phrases?.length) { pdf.h3('Frases para la próxima vez', PC.omr); fb.phrases.forEach(p => pdf.rich([{ t: '- ' + p, i: true }], { size: 10 })); }
+  if (sess.grammar && r.marks) renderGrammar(pdf, sess.grammar, { corr: true, marks: r.marks, answers: sess.answers || {}, results: r });
   renderRefuerzo(pdf, fb);
   return pdf;
 }

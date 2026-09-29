@@ -101,22 +101,38 @@ function genPartPrompt(st, pid, ctx) {
   ].filter(Boolean).join('\n');
 }
 
-function genReviewPrompt(st, queueItems) {
+function genGrammarPrompt(st, topic) {
   const ex = EXAMS[st.level];
-  const lines = queueItems.map(x => `- src=${x.id} | ${x.tag}${x.point ? ` (${x.point})` : ''} | context: ${x.context || '-'} | student wrote: ${x.wrong} | correct: ${x.correct}`);
   return [
-    `Create a quick warm-up review for ${st.name}, a Spanish teenager preparing ${ex.name} (${ex.cefr}). Each item revisits ONE past mistake below with a NEW sentence (never repeat the original sentence). Keep items short (one sentence).`,
-    'Mix formats: "choice" (options A–C), "gap" (one word or short phrase) and "rewrite" (a short sentence transformation with a key word in capitals).',
-    'Past mistakes:',
-    ...lines,
-    '"explanation" in Spanish, one short sentence, addressed to the student (tú).',
-    'Reply with ONLY JSON: {"items":[{"src":"q_id","type":"choice","prompt":"We need to ___ a decision soon.","options":{"A":"do","B":"make","C":"take"},"answer":"B","accept":[],"explanation":"..."}]}'
+    `You are an experienced English teacher of Spanish teenagers preparing ${ex.name} (${ex.cefr}). Write a 5-minute grammar mini-lesson and a short exercise on ONE grammar point.`,
+    studentLine(st),
+    `Grammar point: ${topic.en}.`,
+    'The student reads the lesson alone in about 2 minutes, then does the exercise in about 3 minutes. Be clear, concrete and friendly. Write in Spanish (tú) with English examples.',
+    '"explanation": 80–140 words in Spanish: what it is, when we use it and how it is formed. No jargon without an example.',
+    '"forms": 2–5 rows {"form": short pattern, "example": English example}.',
+    '"examples": 3 English sentences, each followed by " — " and the Spanish translation.',
+    '"tip": one sentence in Spanish about the typical mistake Spanish speakers make with this point.',
+    `"exercise": exactly 6 short items (one sentence each) practising ONLY this point, from easy to harder, mixing "gap" (write 1–3 words; give the base verb in brackets when useful), "choice" (options A–C) and "rewrite" (rewrite or complete a sentence). Each item has "answer", "accept" (every acceptable answer, lower case), "explanation" (Spanish, one short sentence) and "tag" (one of: ${TAGS.join(' | ')}).`,
+    'Check silently that each item has only one correct answer (or list all correct ones in "accept").',
+    `Reply with ONLY JSON: {"topic":"${topic.en.replace(/"/g, "'")}","title":"Spanish title","explanation":"...","forms":[{"form":"have/has + past participle","example":"I have finished."}],"examples":["... — ..."],"tip":"...","exercise":{"instruction":"English instruction","items":[{"type":"gap","prompt":"She ___ (live) here since 2019.","answer":"has lived","accept":["has lived","'s lived"],"explanation":"...","tag":"verb tenses"},{"type":"choice","prompt":"...","options":{"A":"...","B":"...","C":"..."},"answer":"B","accept":[],"explanation":"...","tag":"verb tenses"}]}}`
   ].join('\n');
+}
+
+function pickGrammarTopic(st) {
+  const done = new Set(st.grammarDone || []);
+  const lists = st.level === 'B2' ? [GRAMMAR.B2, GRAMMAR.C1] : [GRAMMAR.B1, GRAMMAR.B2];
+  const weak = new Set(weakTags(S.notebooks[st.id]).slice(0, 6).map(t => tagKey(t.tag)));
+  for (const list of lists) {
+    const left = list.filter(t => !done.has(t.id));
+    if (left.length) return left.find(t => weak.has(tagKey(t.tag))) || left[0];
+  }
+  const all = lists[0];
+  return all[(st.grammarDone || []).length % all.length];
 }
 
 function genWritingPrompt(st, part, ctx) {
   const ex = EXAMS[st.level], B2 = st.level === 'B2', d = diffOf(st, 'W' + part);
-  const words = part === 1 ? ex.writing.p1.words : (B2 ? '140–190' : 'about 100');
+  const words = B2 ? '120–150' : 'about 100';
   let task;
   if (part === 1 && B2) {
     task = `Writing Part 1: an essay. Give a "context" ("In your English class you have been talking about ... Now, your English teacher has asked you to write an essay."), an "instruction" ("Write an essay using all the notes and giving reasons for your point of view."), a debatable "question" and "notes" with two ideas plus "(your own idea)". Length ${words} words.
@@ -134,6 +150,7 @@ Shape: {"topic":"2-4 words","part":2,"type":"choice","words":"${words}","options
     `You are an experienced Cambridge English item writer. Write ONE original ${ex.name} (${ex.cefr}) Writing task.`,
     studentLine(st),
     `Difficulty ${d}/5 within ${ex.cefr}: ${DIFF[d]}.`,
+    `This is a 15-minute training task (3 minutes planning, 12 minutes writing), so keep the task focused and the word range at ${words} words${B2 ? ' (the real exam asks for 140–190)' : ''}.`,
     `Avoid these recent topics: ${ctx.recentTopics.join('; ') || 'none'}.`,
     ctx.weak.length ? `The student's weak points (you may reflect them in the tips): ${ctx.weak.join('; ')}.` : '',
     task,
@@ -169,12 +186,12 @@ const LESSONS_SHAPE = '"lessons":[{"title":"...","explanation":"...","examples":
 function gradePrompt(st, sess, items, answers, marks) {
   const ex = EXAMS[st.level];
   const byPart = {};
-  items.filter(i => !i.review).forEach(i => { const b = byPart[i.pid] || (byPart[i.pid] = { s: 0, m: 0 }); b.m += i.max; b.s += marks[i.key].status === 'correct' ? i.max : 0; });
+  items.filter(i => !i.review && !i.grammar).forEach(i => { const b = byPart[i.pid] || (byPart[i.pid] = { s: 0, m: 0 }); b.m += i.max; b.s += marks[i.key].status === 'correct' ? i.max : 0; });
   const scoreLines = Object.entries(byPart).map(([pid, b]) => `${ex.parts[pid].label} ${ex.parts[pid].title}: ${b.s}/${b.m} so far`);
   const bad = items.filter(i => marks[i.key].status !== 'correct');
   const rows = bad.map(i => JSON.stringify({
     id: i.key,
-    part: i.review ? 'warm-up review' : `${ex.parts[i.pid].label} ${ex.parts[i.pid].title}`,
+    part: i.review ? 'warm-up review' : i.grammar ? `grammar mini-lesson exercise (${sess.grammar?.topic || ''})` : `${ex.parts[i.pid].label} ${ex.parts[i.pid].title}`,
     context: itemContext(i).slice(0, 420),
     key: keyText(i),
     accepted: i.type === 'text' ? (i.q.accept || []).slice(0, 6) : undefined,
@@ -217,6 +234,7 @@ function writingGradePrompt(st, sess, text, hasImages, choice) {
     `You are an experienced Cambridge English examiner for ${ex.name} Writing. Assess the student's answer with the four official subscales (Content, Communicative Achievement, Organisation, Language), each 0–5 and calibrated to ${ex.cefr} (3 = solid pass at ${ex.cefr}, 5 = excellent for the level).`,
     studentLine(st),
     `Task (${w.words} words):\n${writingTaskText(w, choice)}`,
+    'This was a 15-minute training task, so judge length against the word range given in the task, not the full exam length.',
     hasImages
       ? 'The student\'s handwritten answer is in the attached photo(s). First transcribe it exactly as written, keeping every mistake.'
       : `Student's answer:\n"""\n${text}\n"""`,
@@ -239,16 +257,18 @@ function speakingFeedbackPrompt(st, sess, marks, notes) {
 
 function sheetReadPrompt(sess) {
   const ex = EXAMS[sess.level];
-  const lines = (sess.parts || []).map(p => {
-    const P = ex.parts[p.id];
-    return `- ${P.paper} ${P.label} → keys "${p.id}:${P.first}" … "${p.id}:${P.first + P.count - 1}" (questions ${P.first}–${P.first + P.count - 1}): ${P.letters ? `one letter (${P.letters.split('').join('/')})` : 'written word(s)'}`;
-  });
+  const lines = [];
+  if (sess.grammar) lines.push(`- Grammar → keys ${sess.grammar.items.map(r => `"GR:${r.n}"`).join(', ')}: letters or words`);
   if (sess.review) lines.push(`- Warm-up → keys ${sess.review.items.map(r => `"RV:${r.n}"`).join(', ')}: letters or words`);
+  for (const p of sess.parts || []) {
+    const P = ex.parts[p.id];
+    lines.push(`- ${P.paper} ${P.label} → keys "${p.id}:${P.first}" … "${p.id}:${P.first + P.count - 1}" (questions ${P.first}–${P.first + P.count - 1}): ${P.letters ? `one letter (${P.letters.split('').join('/')})` : 'written word(s)'}`);
+  }
   return [
     'The photo(s) show a student\'s filled-in practice answer sheet (or exercise pages). Read the student\'s answers.',
     ...lines,
     'Transcribe exactly what the student wrote or marked, including spelling mistakes; never correct anything. Blank, unreadable or ambiguous (two marks) answers are null. For lozenge rows, the answer is the shaded lozenge.',
-    'Reply with ONLY JSON: {"answers":{"U1:1":"B","U2:9":"WHICH"}} using keys exactly as listed above.'
+    'Reply with ONLY JSON: {"answers":{"GR:G1":"A","U1:1":"B","U2:9":"WHICH"}} using keys exactly as listed above.'
   ].join('\n');
 }
 
@@ -318,15 +338,29 @@ function normalizePart(level, pid, raw) {
   return part;
 }
 
-function normalizeReview(raw, queueItems) {
-  const items = (raw && Array.isArray(raw.items) ? raw.items : []).filter(x => x && x.prompt && x.answer).slice(0, 6);
-  return items.map((x, i) => {
-    const type = ['choice', 'gap', 'rewrite'].includes(x.type) ? x.type : 'gap';
-    const o = { n: 'R' + (i + 1), src: str(x.src) || queueItems[i]?.id || '', type, prompt: str(x.prompt), explanation: str(x.explanation) };
-    if (type === 'choice' && x.options) { o.options = x.options; o.answer = str(x.answer).trim().toUpperCase().charAt(0); }
-    else { o.type = type === 'choice' ? 'gap' : type; o.answer = str(x.answer); o.accept = Array.from(new Set([o.answer, ...(x.accept || [])].map(normAns).filter(Boolean))); }
-    return o;
-  });
+function normalizeGrammar(raw, topic) {
+  if (!raw || typeof raw !== 'object') throw badGen('lección vacía');
+  const items = (raw.exercise && Array.isArray(raw.exercise.items) ? raw.exercise.items : []).filter(x => x && x.prompt && x.answer != null).slice(0, 6);
+  if (items.length < 4) throw badGen('ejercicio de gramática incompleto');
+  return {
+    topicId: topic.id, topic: str(raw.topic || topic.en), title: str(raw.title || topic.es), tag: topic.tag,
+    explanation: str(raw.explanation), tip: str(raw.tip),
+    forms: (Array.isArray(raw.forms) ? raw.forms : []).slice(0, 5).map(f => ({ form: str(f && f.form), example: str(f && f.example) })),
+    examples: (Array.isArray(raw.examples) ? raw.examples : []).slice(0, 4).map(str),
+    instruction: str(raw.exercise?.instruction || 'Complete the sentences.'),
+    items: items.map((x, i) => {
+      const o = { n: 'G' + (i + 1), type: ['choice', 'gap', 'rewrite'].includes(x.type) ? x.type : 'gap', prompt: str(x.prompt), explanation: str(x.explanation), tag: str(x.tag || topic.tag), point: topic.en };
+      if (o.type === 'choice' && x.options && typeof x.options === 'object') {
+        o.options = x.options; o.answer = str(x.answer).trim().toUpperCase().charAt(0);
+        if (!o.options[o.answer]) throw badGen('clave inválida en gramática');
+      } else {
+        if (o.type === 'choice') o.type = 'gap';
+        o.answer = str(x.answer);
+        o.accept = Array.from(new Set([o.answer, ...(Array.isArray(x.accept) ? x.accept : [])].map(normAns).filter(Boolean)));
+      }
+      return o;
+    })
+  };
 }
 
 /* =========================================================
@@ -360,15 +394,6 @@ function weakTags(nb) {
     .sort((a, b) => b.score - a.score);
 }
 
-function pickReviewItems(nb, max = 6) {
-  if (!nb || !nb.queue || !nb.queue.length) return [];
-  const q = nb.queue.slice().sort((a, b) => (a.streak || 0) - (b.streak || 0) || (a.lastReview || 0) - (b.lastReview || 0) || (b.misses || 1) - (a.misses || 1));
-  const out = [], tags = new Set();
-  for (const x of q) { if (out.length >= max) break; if (!tags.has(x.tag) || q.length <= max) { out.push(x); tags.add(x.tag); } }
-  for (const x of q) { if (out.length >= max) break; if (!out.includes(x)) out.push(x); }
-  return out;
-}
-
 function lastDoneMap(stId) {
   const m = {};
   for (const s of studentSessions(stId)) for (const p of (s.parts || [])) if (!m[p.id] || m[p.id] < s.createdAt) m[p.id] = s.createdAt;
@@ -379,13 +404,17 @@ function autoParts(st, skill) {
   if (!['use', 'reading', 'listening', 'mock'].includes(skill)) return [];
   const pools = POOLS[st.level], ex = EXAMS[st.level], last = lastDoneMap(st.id);
   const byRecency = ids => ids.slice().sort((a, b) => (last[a] || 0) - (last[b] || 0) || ex.order.indexOf(a) - ex.order.indexOf(b));
+  const budget = examBudget(st);
+  let tot = 0; const out = [];
   if (skill === 'mock') {
-    const out = [];
-    for (const k of ['use', 'reading', 'listening']) { const c = byRecency(pools[k]).find(id => !out.includes(id)); if (c) out.push(c); }
+    for (const k of ['use', 'listening', 'reading']) {
+      const c = byRecency(pools[k]).find(id => !out.includes(id) && tot + ex.parts[id].minutes <= budget);
+      if (c) { out.push(c); tot += ex.parts[c].minutes; }
+    }
+    if (!out.length) out.push(byRecency(pools.use)[0]);
     return examOrder(st.level, out);
   }
-  const target = +st.minutes || 30; let tot = 0; const out = [];
-  for (const id of byRecency(pools[skill])) { const m = ex.parts[id].minutes; if (out.length && tot + m > target + 5) continue; out.push(id); tot += m; }
+  for (const id of byRecency(pools[skill])) { const m = ex.parts[id].minutes; if (out.length && tot + m > budget) continue; out.push(id); tot += m; }
   return examOrder(st.level, out);
 }
 
@@ -403,11 +432,10 @@ async function generateFor(stId, skill, pids, opts = {}) {
   const ctl = new AbortController();
   const g = S.gen[stId] = { running: true, ctl, steps: [], error: null, sessionId: null };
   const ctx = genContext(st);
-  const nb = S.notebooks[stId];
-  const reviewSrc = skill !== 'speaking' ? pickReviewItems(nb) : [];
+  const topic = pickGrammarTopic(st);
   const sess = {
     studentId: stId, level: st.level, createdAt: Date.now(), dateKey: dateKey(), skill,
-    status: 'ready', parts: [], review: null, writing: null, speaking: null, failed: [],
+    status: 'ready', parts: [], review: null, grammar: null, writing: null, speaking: null, failed: [],
     minutes: 0, difficulty: {}
   };
   const tasks = [];
@@ -419,13 +447,13 @@ async function generateFor(stId, skill, pids, opts = {}) {
       const raw = await ask(genWritingPrompt(st, part, ctx), { tier: 'complex', signal: ctl.signal });
       if (!raw || (!raw.question && !raw.options && !raw.email)) throw badGen('tarea incompleta');
       raw.part = part; raw.words = raw.words || (part === 1 ? EXAMS[st.level].writing.p1.words : (st.level === 'B2' ? '140–190' : 'about 100'));
-      sess.writing = raw; sess.minutes = st.level === 'B2' ? 40 : 30; sess.difficulty['W' + part] = diffOf(st, 'W' + part);
+      sess.writing = raw; sess.minutes = GRAMMAR_MIN + 15; sess.difficulty['W' + part] = diffOf(st, 'W' + part);
     });
   } else if (skill === 'speaking') {
     addStep('S', 'Speaking (4 partes)', async () => {
       const raw = await ask(genSpeakingPrompt(st, ctx), { tier: 'default', signal: ctl.signal });
       if (!raw || !raw.part1 || !raw.part3) throw badGen('guion incompleto');
-      sess.speaking = raw; sess.minutes = st.level === 'B2' ? 15 : 12;
+      sess.speaking = raw; sess.minutes = GRAMMAR_MIN + (st.level === 'B2' ? 14 : 12);
     });
   } else {
     for (const pid of pids) {
@@ -436,15 +464,12 @@ async function generateFor(stId, skill, pids, opts = {}) {
         sess.parts.push(part); sess.difficulty[pid] = diffOf(st, pid);
       });
     }
-    sess.minutes = sessionMinutes(st.level, pids);
+    sess.minutes = GRAMMAR_MIN + sessionMinutes(st.level, pids);
   }
-  if (reviewSrc.length) {
-    addStep('RV', `Calentamiento: repaso de ${reviewSrc.length} errores`, async () => {
-      const raw = await ask(genReviewPrompt(st, reviewSrc), { tier: 'default', signal: ctl.signal });
-      const items = normalizeReview(raw, reviewSrc);
-      if (items.length) sess.review = { items };
-    });
-  }
+  addStep('GR', `Gramática: ${topic.es}`, async () => {
+    const raw = await ask(genGrammarPrompt(st, topic), { tier: 'default', signal: ctl.signal });
+    sess.grammar = normalizeGrammar(raw, topic);
+  });
   paintGen(stId);
   const res = await runPool(tasks, 4);
   g.running = false;
@@ -462,6 +487,7 @@ async function generateFor(stId, skill, pids, opts = {}) {
   const id = uid('s');
   g.sessionId = id;
   await saveSession(id, sess);
+  if (sess.grammar) await saveStudent(st.id, Object.assign(clone(stripId(S.students[st.id] || st)), { grammarDone: [...(S.students[st.id]?.grammarDone || []), sess.grammar.topicId] }));
   S.gen[stId] = null;
   toast(`Sesión de ${st.name} lista`);
   if (opts.open !== false && S.view === 'today' && S.cur === stId) openSession(id); else renderAll();
@@ -476,7 +502,7 @@ async function retryPart(sessId, pid) {
     sess.parts = sess.parts.filter(p => p.id !== pid); sess.parts.push(part);
     sess.parts = examOrder(st.level, sess.parts.map(p => p.id)).map(id => sess.parts.find(p => p.id === id));
     sess.failed = (sess.failed || []).filter(x => x !== pid);
-    sess.minutes = sessionMinutes(st.level, sess.parts.map(p => p.id));
+    sess.minutes = (sess.grammar ? GRAMMAR_MIN : 0) + sessionMinutes(st.level, sess.parts.map(p => p.id));
     delete S.busy[sessId];
     await saveSession(sessId, sess);
     toast('Parte regenerada');
@@ -489,11 +515,12 @@ async function retryPart(sessId, pid) {
    ========================================================= */
 function sessionItems(sess) {
   const out = [];
+  if (sess.grammar) for (const r of sess.grammar.items) out.push({ key: `GR:${r.n}`, pid: 'GR', grammar: true, q: r, n: r.n, type: r.type === 'choice' ? 'letter' : 'text', letters: Object.keys(r.options || {}).join(''), max: 1 });
+  if (sess.review) for (const r of sess.review.items) out.push({ key: `RV:${r.n}`, pid: 'RV', review: true, q: r, n: r.n, type: r.type === 'choice' ? 'letter' : 'text', letters: Object.keys(r.options || {}).join(''), max: 1 });
   for (const part of sess.parts || []) {
     const P = partSpec(sess.level, part.id);
     for (const q of part.questions) out.push({ key: `${part.id}:${q.n}`, pid: part.id, P, part, q, n: q.n, type: P.letters ? 'letter' : 'text', letters: P.letters || '', max: P.marks || 1 });
   }
-  if (sess.review) for (const r of sess.review.items) out.push({ key: `RV:${r.n}`, pid: 'RV', review: true, q: r, n: r.n, type: r.type === 'choice' ? 'letter' : 'text', letters: Object.keys(r.options || {}).join(''), max: 1 });
   return out;
 }
 
@@ -507,7 +534,7 @@ function sentenceAround(text, n) {
 
 function itemContext(it) {
   const q = it.q, part = it.part;
-  if (it.review) return q.prompt;
+  if (it.review || it.grammar) return q.prompt;
   switch (it.P.kind) {
     case 'mcq-cloze': case 'open-cloze': case 'gapped': return sentenceAround(part.text, q.n);
     case 'word-formation': return `${sentenceAround(part.text, q.n)} (${q.stem})`;
@@ -583,15 +610,16 @@ async function gradeSession(sessId) {
     } else fallbackMark(it, answers[it.key], m);
   }
   const errors = {}; (fb?.errors || []).forEach(e => { if (e && e.id && marks[e.id] && marks[e.id].status !== 'correct') errors[e.id] = e; });
-  const byPart = {}; let score = 0, max = 0; const rv = { score: 0, max: 0 };
+  const byPart = {}; let score = 0, max = 0; const rv = { score: 0, max: 0 }, gr = { score: 0, max: 0 };
   for (const it of items) {
     const m = marks[it.key];
     if (it.review) { rv.max += 1; rv.score += m.status === 'correct' ? 1 : 0; continue; }
+    if (it.grammar) { gr.max += 1; gr.score += m.status === 'correct' ? 1 : 0; continue; }
     const b = byPart[it.pid] || (byPart[it.pid] = { score: 0, max: 0 });
     b.max += it.max; b.score += m.points; max += it.max; score += m.points;
   }
   sess.answers = answers;
-  sess.results = { marks, byPart, score, max, pct: pct(score, max), review: sess.review ? rv : null, warn };
+  sess.results = { marks, byPart, score, max, pct: pct(score, max), review: sess.review ? rv : null, grammar: sess.grammar ? gr : null, warn };
   sess.feedback = {
     summary: str(fb?.summary), parentNote: str(fb?.parentNote), errors,
     lessons: Array.isArray(fb?.lessons) ? fb.lessons.slice(0, 3) : [],
@@ -608,7 +636,7 @@ async function gradeSession(sessId) {
       diff[pid] = p >= 85 ? Math.min(5, d + 1) : p < 50 ? Math.max(1, d - 1) : d;
     }
     await saveNotebook(st.id, nb);
-    await saveStudent(st.id, Object.assign(clone(stripId(st)), { difficulty: diff }));
+    await saveStudent(st.id, Object.assign(clone(stripId(S.students[st.id] || st)), { difficulty: diff }));
   }
   delete S.drafts[sessId]; saveDraftLocal(sessId, null);
   return warn;
@@ -626,11 +654,21 @@ function queuePush(nb, entry) {
   if (nb.queue.length > 80) nb.queue = nb.queue.slice(-80);
 }
 
-function notebookAfterObjective(st, sessId, sess, items, marks, errors, answers) {
-  const nb = clone(S.notebooks[st.id]) || emptyNotebook();
+function masteryHit(nb, tag, sessId, seen) {
+  const k = tagKey(tag);
+  const i = nb.queue.findIndex(x => tagKey(x.tag) === k && x.sessionId !== sessId && !seen.has(x.id));
+  if (i < 0) return;
+  const x = nb.queue[i]; seen.add(x.id);
+  x.streak = (x.streak || 0) + 1; x.lastReview = Date.now();
+  if (x.streak >= 2) { nb.queue.splice(i, 1); nb.mastered = (nb.mastered || 0) + 1; }
+}
+
+function notebookAfterObjective(st, sessId, sess, items, marks, errors, answers, base) {
+  const nb = base || clone(S.notebooks[st.id]) || emptyNotebook();
   nb.tags = nb.tags || {}; nb.queue = nb.queue || []; nb.mastered = nb.mastered || 0;
+  const seen = new Set();
   for (const it of items) {
-    const m = marks[it.key];
+    const m = marks[it.key]; if (!m) continue;
     if (it.review) {
       const qi = nb.queue.findIndex(x => x.id === it.q.src);
       if (qi < 0) continue;
@@ -639,13 +677,13 @@ function notebookAfterObjective(st, sessId, sess, items, marks, errors, answers)
       else { x.streak = 0; x.misses = (x.misses || 1) + 1; bumpTag(nb, x.tag, false); }
       continue;
     }
-    const fe = errors[it.key] || {};
+    const fe = (errors || {})[it.key] || {};
     const tag = str(fe.tag || it.q.tag || 'otros');
-    if (m.status === 'correct') { bumpTag(nb, tag, true); continue; }
+    if (m.status === 'correct') { bumpTag(nb, tag, true); masteryHit(nb, tag, sessId, seen); continue; }
     const point = str(fe.point || it.q.point);
     bumpTag(nb, tag, false, { point, wrong: answers[it.key] || '', correct: keyText(it) });
     queuePush(nb, {
-      tag, point, category: str(fe.category) || (m.status === 'blank' ? 'tiempo' : 'vocabulario'),
+      tag, point, category: str(fe.category) || (m.status === 'blank' ? 'tiempo' : it.grammar ? 'gramática' : 'vocabulario'),
       context: itemContext(it).slice(0, 240), wrong: givenText(it, answers[it.key]) || '(en blanco)', correct: keyText(it),
       explanation: str(fe.explanation || it.q.explanation), sessionId: sessId, date: sess.dateKey
     });
@@ -653,47 +691,47 @@ function notebookAfterObjective(st, sessId, sess, items, marks, errors, answers)
   return nb;
 }
 
-function notebookAfterCorrections(st, sessId, sess, corrections) {
-  const nb = clone(S.notebooks[st.id]) || emptyNotebook();
+function notebookAfterCorrections(st, sessId, sess, corrections, base) {
+  const nb = base || clone(S.notebooks[st.id]) || emptyNotebook();
   nb.tags = nb.tags || {}; nb.queue = nb.queue || []; nb.mastered = nb.mastered || 0;
   for (const c of (corrections || []).slice(0, 8)) {
     const tag = str(c.tag || 'accuracy');
     bumpTag(nb, tag, false, { point: str(c.corrected).slice(0, 60), wrong: str(c.original), correct: str(c.corrected) });
     queuePush(nb, { tag, point: '', category: str(c.category) || 'gramática', context: str(c.original).slice(0, 240), wrong: str(c.original), correct: str(c.corrected), explanation: str(c.why), sessionId: sessId, date: sess.dateKey });
   }
-  if (sess.review) {
-    const marks = sess.results?.reviewMarks || {};
-    for (const r of sess.review.items) {
-      const m = marks[r.n]; const qi = nb.queue.findIndex(x => x.id === r.src);
-      if (!m || qi < 0) continue;
-      const x = nb.queue[qi]; x.lastReview = Date.now();
-      if (m === 'correct') { x.streak = (x.streak || 0) + 1; if (x.streak >= 2) { nb.queue.splice(qi, 1); nb.mastered++; } }
-      else x.streak = 0;
-    }
-  }
   return nb;
 }
 
-function markReviewOnly(sess, answers) {
-  const out = {};
-  if (!sess.review) return out;
-  for (const it of sessionItems(sess).filter(i => i.review)) { const m = autoMark(it, answers[it.key]); out[it.n] = m.status === 'check' ? 'wrong' : m.status; }
-  return out;
+async function markQuickItems(st, sess, answers) {
+  // Grammar (and old warm-up) items of writing/speaking sessions: auto-mark, ask Claude only about doubtful text answers.
+  const items = sessionItems(sess).filter(i => i.grammar || i.review);
+  const marks = {};
+  items.forEach(it => { marks[it.key] = autoMark(it, answers[it.key]); });
+  const doubt = items.filter(it => marks[it.key].status === 'check');
+  if (doubt.length) {
+    try {
+      const rows = doubt.map(it => JSON.stringify({ id: it.key, prompt: it.q.prompt, key: it.q.answer, accepted: it.q.accept || [], given: answers[it.key] }));
+      const r = await ask(['Decide whether each student answer to these short English grammar items is acceptable (spelling must be correct). JSON lines:', ...rows, 'Reply with ONLY JSON: {"judgments":[{"id":"GR:G2","correct":true}]}'].join('\n'), { tier: 'quick' });
+      const j = {}; (r?.judgments || []).forEach(x => { if (x && x.id) j[x.id] = x; });
+      for (const it of doubt) { const m = marks[it.key]; if (j[it.key]) { m.status = j[it.key].correct ? 'correct' : 'wrong'; m.points = j[it.key].correct ? 1 : 0; } else fallbackMark(it, answers[it.key], m); }
+    } catch (e) { for (const it of doubt) fallbackMark(it, answers[it.key], marks[it.key]); }
+  }
+  const sc = kind => { const its = items.filter(i => i[kind]); return its.length ? { score: its.filter(i => marks[i.key].status === 'correct').length, max: its.length } : null; };
+  return { items, marks, grammar: sc('grammar'), review: sc('review') };
 }
 
 async function gradeWriting(sessId, text, files, choice) {
   const sess = clone(S.sessions[sessId]); const st = S.students[sess.studentId];
   const hasImages = !!(files && files.length);
+  const answers = Object.assign({}, sess.answers || {}, S.drafts[sessId] || {});
+  const quick = await markQuickItems(st, sess, answers);
   const fb = await ask(writingGradePrompt(st, sess, text, hasImages, choice), { tier: 'complex', images: hasImages ? Array.from(files) : undefined });
   const sc = fb?.scores || {};
   const clamp = v => Math.max(0, Math.min(5, Math.round(+v || 0)));
   const scores = { content: clamp(sc.content), communicative: clamp(sc.communicative), organisation: clamp(sc.organisation), language: clamp(sc.language) };
   const total = scores.content + scores.communicative + scores.organisation + scores.language;
-  const answers = Object.assign({}, S.drafts[sessId] || {});
-  const reviewMarks = markReviewOnly(sess, answers);
   sess.answers = answers;
-  sess.results = { score: total, max: 20, pct: pct(total, 20), writingScores: scores, reviewMarks,
-    review: sess.review ? { score: Object.values(reviewMarks).filter(v => v === 'correct').length, max: sess.review.items.length } : null };
+  sess.results = { score: total, max: 20, pct: pct(total, 20), writingScores: scores, marks: quick.marks, grammar: quick.grammar, review: quick.review };
   sess.feedback = {
     transcript: str(fb?.transcript || text), wordCount: +fb?.wordCount || wordCount(fb?.transcript || text), choice: choice || 0,
     summary: str(fb?.summary), parentNote: str(fb?.parentNote), strengths: fb?.strengths || [], improvements: fb?.improvements || [],
@@ -704,21 +742,25 @@ async function gradeWriting(sessId, text, files, choice) {
   const first = !sess.nbApplied; sess.nbApplied = true;
   await saveSession(sessId, sess);
   if (first) {
-    const nb = notebookAfterCorrections(st, sessId, sess, sess.feedback.corrections);
+    let nb = notebookAfterObjective(st, sessId, sess, quick.items, quick.marks, {}, answers);
+    nb = notebookAfterCorrections(st, sessId, sess, sess.feedback.corrections, nb);
     const key = 'W' + (sess.writing?.part || 1), d = diffOf(st, key);
     const diff = Object.assign({}, st.difficulty || {}, { [key]: total >= 17 ? Math.min(5, d + 1) : total < 10 ? Math.max(1, d - 1) : d });
     await saveNotebook(st.id, nb);
-    await saveStudent(st.id, Object.assign(clone(stripId(st)), { difficulty: diff }));
+    await saveStudent(st.id, Object.assign(clone(stripId(S.students[st.id] || st)), { difficulty: diff }));
   }
   delete S.drafts[sessId]; saveDraftLocal(sessId, null);
 }
 
 async function gradeSpeaking(sessId, marks, notes) {
   const sess = clone(S.sessions[sessId]); const st = S.students[sess.studentId];
+  const answers = Object.assign({}, sess.answers || {}, S.drafts[sessId] || {});
+  const quick = await markQuickItems(st, sess, answers);
   let fb = null, warn = '';
   try { fb = await ask(speakingFeedbackPrompt(st, sess, marks, notes), { tier: 'default' }); } catch (e) { warn = errMsg(e); }
   const total = ['gv', 'dm', 'pr', 'ic'].reduce((t, k) => t + (+marks[k] || 0), 0);
-  sess.results = { score: total, max: 20, pct: pct(total, 20), speakingMarks: marks, warn };
+  sess.answers = answers;
+  sess.results = { score: total, max: 20, pct: pct(total, 20), speakingMarks: marks, marks: quick.marks, grammar: quick.grammar, review: quick.review, warn };
   sess.feedback = {
     notes, summary: str(fb?.summary), parentNote: str(fb?.parentNote), strengths: fb?.strengths || [], improvements: fb?.improvements || [],
     corrections: (fb?.corrections || []).slice(0, 10), phrases: fb?.phrases || [], practice: (fb?.practice || []).slice(0, 8), lessons: []
@@ -726,7 +768,12 @@ async function gradeSpeaking(sessId, marks, notes) {
   sess.status = 'corrected'; sess.correctedAt = Date.now();
   const first = !sess.nbApplied; sess.nbApplied = true;
   await saveSession(sessId, sess);
-  if (first) await saveNotebook(st.id, notebookAfterCorrections(st, sessId, sess, sess.feedback.corrections));
+  if (first) {
+    let nb = notebookAfterObjective(st, sessId, sess, quick.items, quick.marks, {}, answers);
+    nb = notebookAfterCorrections(st, sessId, sess, sess.feedback.corrections, nb);
+    await saveNotebook(st.id, nb);
+  }
+  delete S.drafts[sessId]; saveDraftLocal(sessId, null);
 }
 
 async function readSheetPhoto(sessId, files) {
