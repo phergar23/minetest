@@ -52,6 +52,13 @@ const ICON = {
 };
 function btn(label, attrs = '', cls = '', icon = '') { return `<button type="button" class="btn ${cls}" ${attrs}>${icon ? ICON[icon] : ''}${esc(label)}</button>`; }
 function partShort(id, P) { return `${P.paper === 'Listening' ? 'Listening' : id.startsWith('U') ? 'UoE' : 'Reading'} ${P.label.replace('Part ', 'P')}`; }
+function exportDocs() {
+  const docs = {};
+  for (const [id, v] of Object.entries(S.students)) docs['students/' + id] = stripId(v);
+  for (const [id, v] of Object.entries(S.sessions)) docs['sessions/' + id] = stripId(v);
+  for (const [id, v] of Object.entries(S.notebooks)) docs['notebooks/' + id] = v;
+  return docs;
+}
 function studentList() { return Object.values(S.students).sort((a, b) => (a.order || 99) - (b.order || 99) || String(a.name).localeCompare(b.name)); }
 function curStudent() { return S.students[S.cur] || null; }
 function todayKey() { return dateKey(); }
@@ -532,6 +539,10 @@ function settingsHtml() {
       <p class="small muted">Los datos se guardan en este navegador (${window.__LOCAL_STORE === 'idb' ? 'IndexedDB' : 'almacenamiento local'}). Si cambias de navegador u ordenador, pásalos con la copia de seguridad.</p>
     </section>`;
   }
+  if (!window.__LOCAL__) h += `<section class="card stack"><h3 class="h3">Versión local para el ordenador</h3>
+    <p class="muted small">Un solo archivo HTML que se abre con doble clic en el Mac (Chrome o Safari) y lleva ya dentro a tus alumnos, sesiones y cuadernos de errores tal como están ahora. Funciona con tu propia clave de la API de Anthropic, que se paga aparte de la suscripción, y con ella sí puede leer las hojas de respuestas desde una foto. Los datos de la copia local y los de esta versión web van por separado; para pasarlos de una a otra usa la copia de seguridad.</p>
+    <div class="row">${btn('Descargar versión local', 'data-dl-local="1"', 'primary', 'pdf')}</div>
+  </section>`;
   h += `<section class="card stack"><h3 class="h3">Copia de seguridad</h3>
     <p class="muted small">Guarda todos los alumnos, sesiones y cuadernos de errores en un archivo, o cárgalos desde otra copia (por ejemplo, para pasar de la versión web a la local). Al importar se sustituyen los elementos con el mismo nombre.</p>
     <div class="row">${btn('Exportar copia', 'data-export="1"', '', 'pdf')}<input type="file" id="imp-file" accept="application/json,.json">${btn('Importar copia', 'data-import="1"', '')}</div>
@@ -723,11 +734,23 @@ document.addEventListener('click', async ev => {
     return;
   }
   if (d.locClear) { window.LOCAL_CFG.key = ''; toast('Clave borrada'); renderBanner(); renderMain(true); return; }
+  if (d.dlLocal) {
+    if (!S.dl) { toast('Esta vista no permite guardar archivos.'); return; }
+    t.disabled = true; toast('Preparando la versión local…');
+    try {
+      const r = await fetch('local.html'); if (!r.ok) throw new Error('http ' + r.status);
+      const tpl = await r.text();
+      const seed = '<script>window.__LOCAL_SEED=' + JSON.stringify(exportDocs()).replace(/</g, '\\u003c') + ';<' + '/script>';
+      const mark = '<!-' + '-LOCAL_SEED-->';
+      if (!tpl.includes(mark)) throw new Error('template');
+      await S.dl.save({ filename: 'CambridgeEnCasa-local.html', data: new Blob([tpl.replace(mark, () => seed)], { type: 'text/html' }) });
+      toast('Versión local descargada');
+    } catch (e) { if (!e || e.code !== 'declined') toast(e && e.code === 'extension_not_enabled' ? 'Esta vista no permite descargar archivos HTML.' : 'No se pudo preparar la descarga.'); }
+    finally { t.disabled = false; }
+    return;
+  }
   if (d.export) {
-    const docs = {};
-    for (const [id, v] of Object.entries(S.students)) docs['students/' + id] = stripId(v);
-    for (const [id, v] of Object.entries(S.sessions)) docs['sessions/' + id] = stripId(v);
-    for (const [id, v] of Object.entries(S.notebooks)) docs['notebooks/' + id] = v;
+    const docs = exportDocs();
     const data = JSON.stringify({ app: 'cambridge-en-casa', version: 1, exportedAt: new Date().toISOString(), docs });
     if (!S.dl) { toast('Esta vista no permite guardar archivos.'); return; }
     try { await S.dl.save({ filename: `cambridge-en-casa-copia-${todayKey()}.json`, data }); toast('Copia guardada'); } catch (e) { if (e && e.code !== 'declined') toast('No se pudo guardar la copia.'); }

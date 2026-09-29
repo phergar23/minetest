@@ -39,7 +39,7 @@ def main():
     body, n = re.subn(r'<script src="https://cdnjs\.cloudflare\.com/ajax/libs/jspdf/[^"]+"></script>',
                       lambda m: inline(pathlib.Path(a.jspdf).read_text()), body)
     assert n == 1, 'jsPDF tag not found'
-    seed = ''
+    seed = '<!--LOCAL_SEED-->'
     if a.seed:
         docs = json.loads(pathlib.Path(a.seed).read_text())['docs']
         seed = '<script>window.__LOCAL_SEED=' + json.dumps(docs, ensure_ascii=False).replace('</', '<\\/') + ';</script>'
