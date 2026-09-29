@@ -13,3 +13,12 @@ practice at home for B1 Preliminary for Schools and B2 First for Schools.
 
 `src/` holds the parts; `./build.sh` concatenates them into `index.html`.
 Runtime capabilities used: `db`, `sample`, `downloads`.
+
+## Local edition
+
+`build-local.py` produces a single HTML file that runs from disk in a desktop
+browser: data lives in the browser (IndexedDB, with backup export/import in
+Ajustes) and Claude is called through the Anthropic API with the user's own
+key (TypeScript SDK bundled for the browser, `claude-opus-5-5` by default,
+server-side refusal fallback enabled). See the script header for the vendor
+files it needs.

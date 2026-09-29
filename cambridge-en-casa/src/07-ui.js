@@ -100,7 +100,8 @@ function renderNav() {
 }
 function renderBanner() {
   const b = $('#banner'); const msgs = [];
-  if (S.dbState === 'none') msgs.push('<div class="notice warn">No hay almacenamiento en esta vista: lo que hagas no se guardará. Abre la app desde claude.ai para conservar sesiones y progreso.</div>');
+  if (S.dbState === 'none' && !window.__LOCAL__) msgs.push('<div class="notice warn">No hay almacenamiento en esta vista: lo que hagas no se guardará. Abre la app desde claude.ai para conservar sesiones y progreso.</div>');
+  if (window.__LOCAL__ && !window.LOCAL_CFG.key) msgs.push('<div class="notice warn">Versión local: pon tu clave de API de Anthropic en <b>Ajustes › Conexión con Claude</b> para generar y corregir.</div>');
   if (S.dbState === 'revoked') msgs.push('<div class="notice err">Se ha perdido el acceso a los datos. Recarga la página.</div>');
   b.innerHTML = msgs.join('');
   b.hidden = !msgs.length;
@@ -519,6 +520,22 @@ function settingsHtml() {
       <div class="row">${btn('Guardar cambios', `data-save-st="${esc(st.id)}"`, 'primary')}</div>
     </section>`;
   }
+  if (window.__LOCAL__) {
+    const C = window.LOCAL_CFG;
+    h += `<section class="card stack"><h3 class="h3">Conexión con Claude</h3>
+      <p class="muted small">Esta copia funciona en tu ordenador y habla directamente con la API de Anthropic con tu clave (se crea en console.anthropic.com). El uso se paga en tu cuenta de la API, aparte de la suscripción de Claude. La clave solo se guarda en este navegador.</p>
+      <div class="form-grid">
+        <label class="field"><span>Clave de API</span><input id="loc-key" type="password" autocomplete="off" spellcheck="false" placeholder="${C.key ? 'Guardada · escribe otra para cambiarla' : 'sk-ant-…'}"></label>
+        <label class="field"><span>Modelo</span><select id="loc-model">${Object.entries(C.models).map(([id, n]) => `<option value="${id}" ${C.model === id ? 'selected' : ''}>${esc(n)}${id === 'claude-opus-5-5' ? ' (recomendado)' : ' (más barato)'}</option>`).join('')}</select></label>
+      </div>
+      <div class="row">${btn('Guardar y probar la conexión', 'data-loc-save="1"', 'primary')}${C.key ? btn('Borrar la clave', 'data-loc-clear="1"', 'ghost danger') : ''}</div>
+      <p class="small muted">Los datos se guardan en este navegador (${window.__LOCAL_STORE === 'idb' ? 'IndexedDB' : 'almacenamiento local'}). Si cambias de navegador u ordenador, pásalos con la copia de seguridad.</p>
+    </section>`;
+  }
+  h += `<section class="card stack"><h3 class="h3">Copia de seguridad</h3>
+    <p class="muted small">Guarda todos los alumnos, sesiones y cuadernos de errores en un archivo, o cárgalos desde otra copia (por ejemplo, para pasar de la versión web a la local). Al importar se sustituyen los elementos con el mismo nombre.</p>
+    <div class="row">${btn('Exportar copia', 'data-export="1"', '', 'pdf')}<input type="file" id="imp-file" accept="application/json,.json">${btn('Importar copia', 'data-import="1"', '')}</div>
+  </section>`;
   h += `<section class="card stack"><h3 class="h3">Añadir alumno</h3>
     <form id="add-student" class="form-grid">
       <label class="field"><span>Nombre</span><input id="new-name" required placeholder="Nombre"></label>
@@ -694,6 +711,47 @@ document.addEventListener('click', async ev => {
     return;
   }
   if (d.lpart) { stopAudio(); PL.pid = d.lpart; paintPlayer(); return; }
+  if (d.locSave) {
+    const C = window.LOCAL_CFG, k = ($('#loc-key')?.value || '').trim();
+    if (k) C.key = k;
+    C.model = $('#loc-model')?.value;
+    if (!C.key) { toast('Escribe tu clave de API.'); return; }
+    t.disabled = true; toast('Probando la conexión…');
+    try { const r = await S.sample.json('Reply with ONLY this JSON: {"ok": true}', { modelTier: 'quick' }); toast(r && r.ok ? 'Conexión correcta con ' + C.models[C.model] : 'Conectado, pero la respuesta fue rara.'); }
+    catch (e) { toast(errMsg(e)); }
+    finally { t.disabled = false; renderBanner(); renderMain(true); }
+    return;
+  }
+  if (d.locClear) { window.LOCAL_CFG.key = ''; toast('Clave borrada'); renderBanner(); renderMain(true); return; }
+  if (d.export) {
+    const docs = {};
+    for (const [id, v] of Object.entries(S.students)) docs['students/' + id] = stripId(v);
+    for (const [id, v] of Object.entries(S.sessions)) docs['sessions/' + id] = stripId(v);
+    for (const [id, v] of Object.entries(S.notebooks)) docs['notebooks/' + id] = v;
+    const data = JSON.stringify({ app: 'cambridge-en-casa', version: 1, exportedAt: new Date().toISOString(), docs });
+    if (!S.dl) { toast('Esta vista no permite guardar archivos.'); return; }
+    try { await S.dl.save({ filename: `cambridge-en-casa-copia-${todayKey()}.json`, data }); toast('Copia guardada'); } catch (e) { if (e && e.code !== 'declined') toast('No se pudo guardar la copia.'); }
+    return;
+  }
+  if (d.import) {
+    const f = $('#imp-file')?.files?.[0];
+    if (!f) { toast('Elige primero el archivo de copia (.json).'); return; }
+    let obj; try { obj = JSON.parse(await f.text()); } catch (e) { toast('Ese archivo no es una copia válida.'); return; }
+    const docs = obj && obj.app === 'cambridge-en-casa' && obj.docs;
+    if (!docs) { toast('Ese archivo no es una copia de Cambridge en Casa.'); return; }
+    let n = 0;
+    for (const [path, body] of Object.entries(docs)) {
+      const [col, id] = path.split('/');
+      if (!id || !body || typeof body !== 'object') continue;
+      if (col === 'students') await saveStudent(id, body);
+      else if (col === 'sessions') await saveSession(id, body);
+      else if (col === 'notebooks') await saveNotebook(id, body);
+      else continue;
+      n++;
+    }
+    if (!S.cur || !S.students[S.cur]) S.cur = studentList()[0]?.id || null;
+    toast(`${n} elementos importados`); renderAll(); renderMain(true); return;
+  }
   if (d.saveSt) {
     const id = d.saveSt, st = S.students[id]; if (!st) return;
     const v = k => $(`#f-${k}-${CSS.escape(id)}`)?.value;
