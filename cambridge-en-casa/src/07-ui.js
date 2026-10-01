@@ -123,7 +123,7 @@ function renderMain(force) {
   const m = $('#main');
   const sess = S.openId && S.sessions[S.openId];
   const ae = document.activeElement;
-  const typing = S.view === 'settings' || (S.view === 'session' && sess && S.sessTab === 'correct' && sess.status !== 'corrected' && !S.busy[S.openId]) || (S.view === 'today' && ae && (ae.id === 'g-custom' || ae.id === 's-note'));
+  const typing = S.view === 'settings' || (S.view === 'session' && sess && S.sessTab === 'correct' && sess.status !== 'corrected' && !S.busy[S.openId]) || (S.view === 'today' && ae && (ae.id === 'g-custom' || ae.id === 's-note' || ae.id === 'g-search'));
   if (!force && typing && m.dataset.sig === `${S.view}|${S.openId}|${S.sessTab}`) return;
   m.dataset.sig = `${S.view}|${S.openId}|${S.sessTab}`;
   if (S.dbState === 'loading') { m.innerHTML = '<div class="card empty">Cargando…</div>'; return; }
@@ -157,27 +157,61 @@ function chosenTopic(st, pick) {
   return allGrammar().find(t => t.id === pick.grammar) || null;
 }
 
-function grammarPickerHtml(st, pick, autoTopic) {
+function grammarMatches(st, pick) {
+  const q = foldText(pick.gq).split(/\s+/).filter(Boolean);
   const done = new Set(st.grammarDone || []);
-  const order = st.level === 'B2' ? ['B2', 'C1', 'B1'] : ['B1', 'B2', 'C1'];
-  const groups = order.map(lv => `<optgroup label="${lv}">${GRAMMAR[lv].map(t => `<option value="${t.id}" ${pick.grammar === t.id ? 'selected' : ''}>${done.has(t.id) ? '✓ ' : ''}${esc(t.es)}</option>`).join('')}</optgroup>`).join('');
-  return `<div class="form-grid">
-      <label class="field"><span>Gramática de hoy</span><select id="g-topic" data-gpick="1">
-        <option value="" ${!pick.grammar ? 'selected' : ''}>Automática · toca: ${esc(autoTopic.es)}</option>
-        <option value="custom" ${pick.grammar === 'custom' ? 'selected' : ''}>Otro tema (lo escribo yo)…</option>
-        ${groups}
-      </select></label>
-      ${pick.grammar === 'custom' ? `<label class="field"><span>Tema de gramática</span><input id="g-custom" data-gtext="1" value="${esc(pick.grammarText || '')}" placeholder="p. ej. past perfect y narrative tenses" autocomplete="off"></label>` : ''}
+  return allGrammar().filter(t => {
+    if (pick.glevel && levelOfTopic(t) !== pick.glevel) return false;
+    if (pick.gcat && catOfTopic(t) !== pick.gcat) return false;
+    if (pick.ghide && done.has(t.id)) return false;
+    if (!q.length) return true;
+    const hay = foldText(`${t.es} ${t.en} ${(GCATS.find(c => c[0] === catOfTopic(t)) || [])[1] || ''} ${levelOfTopic(t)}`);
+    return q.every(w => hay.includes(w));
+  });
+}
+
+function grammarResultsHtml(st, pick) {
+  const done = new Set(st.grammarDone || []);
+  const list = grammarMatches(st, pick);
+  if (!list.length) return '<p class="empty small">Ningún tema coincide. Prueba otra palabra o escribe tú el tema con «Escribir otro tema».</p>';
+  return list.map(t => `<button type="button" class="g-row" data-gtopic="${t.id}" aria-pressed="${pick.grammar === t.id}"><span>${esc(t.es)}</span><span class="meta">${done.has(t.id) ? '<span class="pill done">✓ visto</span>' : ''}<span class="pill plain">${levelOfTopic(t)}</span></span><span class="en">${esc(t.en)}</span></button>`).join('');
+}
+
+function grammarPickerHtml(st, pick, autoTopic) {
+  const mode = pick.grammar === 'custom' ? 'custom' : pick.grammar ? 'list' : (pick.gmode || 'auto');
+  const sel = mode === 'list' && pick.grammar ? allGrammar().find(t => t.id === pick.grammar) : null;
+  const seg = (m, label) => `<button type="button" class="chip" data-gmode="${m}" aria-pressed="${mode === m}">${label}</button>`;
+  let body = '';
+  if (mode === 'list' && sel && !pick.gopen) {
+    body = `<div class="g-sel"><span>Elegido: <b>${esc(sel.es)}</b></span><span class="pill plain">${levelOfTopic(sel)} · ${esc((GCATS.find(c => c[0] === catOfTopic(sel)) || [])[1] || '')}</span>${btn('Cambiar', 'data-gchange="1"', 'ghost')}</div>`;
+  } else if (mode === 'list') {
+    const base = Object.assign({}, pick, { gcat: '' });
+    const counts = {}; grammarMatches(st, base).forEach(t => { const c = catOfTopic(t); counts[c] = (counts[c] || 0) + 1; });
+    const lv = (v, l) => `<button type="button" class="chip" data-glevel="${v}" aria-pressed="${(pick.glevel || '') === v}">${l}</button>`;
+    body = `<div class="g-picker">
+      <input id="g-search" class="g-search" data-gsearch="1" value="${esc(pick.gq || '')}" placeholder="Buscar: condicional, pasiva, wish, phrasal verbs, used to…" autocomplete="off" style="border:1.5px solid var(--line);border-radius:9px;padding:8px 10px;background:var(--surface);width:100%">
+      <div class="spread"><div class="chips" role="group" aria-label="Nivel">${lv('', 'Todos')}${lv('B1', 'B1')}${lv('B2', 'B2')}${lv('C1', 'C1')}</div>
+        <label class="row small"><input type="checkbox" id="g-hide" ${pick.ghide ? 'checked' : ''}> Ocultar los ya vistos</label></div>
+      <div class="chips" role="group" aria-label="Categoría"><button type="button" class="chip" data-gcat="" aria-pressed="${!pick.gcat}">Todas</button>${GCATS.filter(([id]) => counts[id] || pick.gcat === id).map(([id, l]) => `<button type="button" class="chip" data-gcat="${id}" aria-pressed="${pick.gcat === id}">${esc(l)}<small>${counts[id] || 0}</small></button>`).join('')}</div>
+      <div class="g-results" id="g-results">${grammarResultsHtml(st, pick)}</div>
+    </div>`;
+  } else if (mode === 'custom') {
+    body = `<label class="field"><span>Escribe el tema (en español o inglés)</span><input id="g-custom" data-gtext="1" value="${esc(pick.grammarText || '')}" placeholder="p. ej. past perfect y narrative tenses para el examen del viernes" autocomplete="off"></label>`;
+  }
+  return `<div class="stack" style="gap:8px">
+      <span class="small muted"><b>Gramática de hoy</b></span>
+      <div class="chips" role="group" aria-label="Gramática">${seg('auto', `Automática · toca: ${esc(autoTopic.es)}`)}${seg('list', 'Elegir del temario')}${seg('custom', 'Escribir otro tema')}</div>
+      ${body}
     </div>
     <label class="field"><span>Indicaciones para esta sesión (opcional)</span><input id="s-note" data-snote="1" value="${esc(pick.note || '')}" placeholder="p. ej. examen del colegio el viernes: unidad 3, viajes y transporte" autocomplete="off"></label>
-    <p class="small muted" style="margin-top:-6px">Los temas con ✓ ya los ha trabajado. Elegir uno a mano no rompe la secuencia: al día siguiente sigue con el siguiente pendiente.</p>`;
+    <p class="small muted" style="margin-top:-6px">Elegir un tema a mano no rompe la secuencia: al día siguiente vuelve a lo automático con el siguiente pendiente.</p>`;
 }
 
 function genPick(st) {
   const k = st.id;
   if (!S.pick[k] || S.pick[k].day !== todayKey() || !Array.isArray(S.pick[k].skills)) {
     let skill = todaySkill(st); if (skill === 'rest') skill = 'use';
-    S.pick[k] = { day: todayKey(), skills: [skill], parts: autoPartsFor(st, [skill]), grammar: '', grammarText: '', note: '' };
+    S.pick[k] = { day: todayKey(), skills: [skill], parts: autoPartsFor(st, [skill]), grammar: '', grammarText: '', note: '', gmode: 'auto', gq: '', glevel: st.level === 'B2' ? 'B2' : 'B1', gcat: '', ghide: false, gopen: false };
   }
   return S.pick[k];
 }
@@ -649,6 +683,18 @@ document.addEventListener('click', async ev => {
   if (d.tabGo) { if (d.tabGo !== 'audio') stopAudio(); S.sessTab = d.tabGo; renderMain(true); return; }
   if (d.filter) { S.listFilter = d.filter; renderMain(true); return; }
   if (d.skill) { const st = curStudent(); if (st) toggleSkill(st, d.skill); return; }
+  if (d.gmode || d.glevel != null || d.gcat != null || d.gtopic || d.gchange) {
+    const st = curStudent(); if (!st) return; const p = genPick(st);
+    if (d.gmode) { p.gmode = d.gmode; p.gopen = d.gmode === 'list' && !(p.grammar && p.grammar !== 'custom'); if (d.gmode === 'auto') p.grammar = ''; else if (d.gmode === 'custom') p.grammar = 'custom'; else if (p.grammar === 'custom') p.grammar = ''; }
+    else if (d.gtopic) { p.grammar = d.gtopic; p.gmode = 'list'; p.gopen = false; }
+    else if (d.gchange) p.gopen = true;
+    else if (d.glevel != null) p.glevel = d.glevel;
+    else if (d.gcat != null) p.gcat = d.gcat;
+    renderMain(true);
+    if (d.gmode === 'custom') $('#g-custom')?.focus();
+    else if (d.gmode === 'list' || d.gchange) $('#g-search')?.focus();
+    return;
+  }
   if (d.part) {
     const st = curStudent(); if (!st) return; const p = genPick(st);
     p.parts = p.parts.includes(d.part) ? p.parts.filter(x => x !== d.part) : examOrder(st.level, [...p.parts, d.part]);
@@ -797,6 +843,7 @@ document.addEventListener('click', async ev => {
 
 document.addEventListener('input', ev => {
   const t = ev.target, d = t.dataset;
+  if (d.gsearch) { const st = curStudent(); if (!st) return; const p = genPick(st); p.gq = t.value; const box = $('#g-results'); if (box) box.innerHTML = grammarResultsHtml(st, p); return; }
   if (d.gtext || d.snote) { const st = curStudent(); if (!st) return; const p = genPick(st); if (d.gtext) p.grammarText = t.value; else p.note = t.value; return; }
   if (d.quick != null) {
     const sess = S.sessions[S.openId]; if (!sess) return;
@@ -827,7 +874,7 @@ document.addEventListener('keydown', ev => {
 });
 document.addEventListener('change', ev => {
   const t = ev.target;
-  if (t.dataset && t.dataset.gpick) { const st = curStudent(); if (st) { genPick(st).grammar = t.value; renderMain(true); if (t.value === 'custom') $('#g-custom')?.focus(); } return; }
+  if (t.id === 'g-hide') { const st = curStudent(); if (st) { genPick(st).ghide = t.checked; renderMain(true); } return; }
   if (t.id === 'pl-short') { PL.short = t.checked; paintPlayer(); }
   if (t.id === 'loc-gpu') { window.LOCAL_CFG.gpu = t.checked; kokoroP = null; toast(t.checked ? 'Usaré la tarjeta gráfica para el audio' : 'Usaré el procesador para el audio'); return; }
   if (t.dataset && t.dataset.vp) { const k = t.dataset.vp; VP[k] = ['rate', 'pitch', 'gap'].includes(k) ? +t.value : t.value; saveVP(); paintPlayer(); return; }

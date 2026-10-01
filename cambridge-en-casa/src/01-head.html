@@ -279,5 +279,15 @@ details.more summary { cursor: pointer; font-weight: 700; color: var(--muted); f
 .tabs button[aria-current="true"] { color: var(--omr-ink); border-bottom-color: var(--omr); }
 .file-drop { border: 1.5px dashed var(--omr); border-radius: 12px; padding: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: var(--omr-soft); color: var(--omr-ink); font-size: 14px; }
 .file-drop input { font-size: 13px; max-width: 100%; }
+.g-picker { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--surface-2); }
+.g-picker .chips .chip { padding: 5px 9px; font-size: 12.5px; }
+.g-results { max-height: 280px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.g-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line); background: transparent; padding: 8px 12px; cursor: pointer; }
+.g-row:last-child { border-bottom: 0; }
+.g-row:hover { background: var(--surface-2); }
+.g-row[aria-pressed="true"] { background: var(--omr-soft); }
+.g-row .en { grid-column: 1; color: var(--muted); font-size: 12px; }
+.g-row .meta { grid-row: 1 / span 2; grid-column: 2; display: flex; gap: 6px; align-items: center; }
+.g-sel { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-radius: 10px; background: var(--omr-soft); color: var(--omr-ink); }
 .wr-crit { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 </style>

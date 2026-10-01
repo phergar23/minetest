@@ -321,5 +321,29 @@ const GRAMMAR = {
   ]
 };
 const allGrammar = () => [...GRAMMAR.B1, ...GRAMMAR.B2, ...GRAMMAR.C1];
+const levelOfTopic = t => t.id.slice(0, 2).toUpperCase();
+const GCATS = [
+  ['tenses', 'Tiempos verbales'], ['future', 'Futuro'], ['modals', 'Modales'], ['cond', 'Condicionales y deseos'],
+  ['passive', 'Pasiva y causativa'], ['reported', 'Estilo indirecto'], ['relative', 'Relativos y participios'],
+  ['verbpat', '-ing e infinitivo'], ['compare', 'Comparación y grado'], ['quant', 'Artículos y cantidad'],
+  ['pron', 'Pronombres y referencias'], ['prep', 'Preposiciones'], ['link', 'Conectores'],
+  ['questions', 'Preguntas y auxiliares'], ['emph', 'Énfasis e inversión'], ['wordform', 'Formación de palabras'],
+  ['vocab', 'Phrasal verbs y expresiones']
+];
+function catOfTopic(t) {
+  const en = t.en.toLowerCase();
+  if (t.tag !== 'conditionals' && /inversion|cleft|fronting|emphasis|no sooner/.test(en)) return 'emph';
+  if (/so and such|so, such|quite, rather/.test(en)) return 'compare';
+  if (/former|latter/.test(en)) return 'pron';
+  if (/future|be about to|be due to|be to,|timetable/.test(en) && !/past/.test(en.replace('future in the past', 'future'))) return 'future';
+  if (/future in the past/.test(en)) return 'future';
+  return ({
+    'verb tenses': 'tenses', 'modal verbs': 'modals', 'conditionals': 'cond', 'wish/regret': 'cond', 'passive': 'passive', 'causative': 'passive',
+    'reported speech': 'reported', 'relative clauses': 'relative', 'gerund/infinitive': 'verbpat', 'comparison': 'compare',
+    'quantifiers': 'quant', 'articles & determiners': 'quant', 'pronouns & reference': 'pron', 'prepositions': 'prep',
+    'dependent preposition': 'prep', 'linking word': 'link', 'text cohesion': 'link', 'auxiliary verbs': 'questions'
+  })[t.tag] || (t.tag.startsWith('word formation') ? 'wordform' : 'vocab');
+}
+const foldText = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const examBudget = st => Math.max(8, (+(st && st.minutes) || 20) - GRAMMAR_MIN);
 </script>

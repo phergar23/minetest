@@ -549,7 +549,7 @@ async function generateFor(stId, plan, opts = {}) {
   const gram = good.find(s => s.grammar);
   if (gram) await saveStudent(st.id, Object.assign(clone(stripId(S.students[st.id] || st)), { grammarDone: [...(S.students[st.id]?.grammarDone || []), gram.grammar.topicId] }));
   S.gen[stId] = null;
-  if (S.pick[stId]) Object.assign(S.pick[stId], { grammar: '', grammarText: '', note: '' });
+  if (S.pick[stId]) Object.assign(S.pick[stId], { grammar: '', grammarText: '', note: '', gmode: 'auto', gopen: false, gq: '' });
   const missing = sessions.length - good.length;
   toast(good.length > 1 ? `${good.length} sesiones de ${st.name} listas` : `Sesión de ${st.name} lista` + (missing ? ' (una parte falló; vuelve a generarla)' : ''));
   if (good.length === 1 && opts.open !== false && S.view === 'today' && S.cur === stId) openSession(ids[0]); else renderAll();
