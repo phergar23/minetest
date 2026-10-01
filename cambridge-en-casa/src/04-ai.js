@@ -423,6 +423,42 @@ function autoParts(st, skill) {
   return examOrder(st.level, out);
 }
 
+const OBJ_SKILLS = ['use', 'reading', 'listening', 'mock'];
+const speakMin = st => (st.level === 'B2' ? 14 : 12);
+
+/* Parts for one or several skills chosen for the same day. */
+function autoPartsFor(st, skills) {
+  const obj = skills.filter(k => OBJ_SKILLS.includes(k));
+  if (!obj.length) return [];
+  const extra = (skills.includes('writing') ? 15 : 0) + (skills.includes('speaking') ? speakMin(st) : 0);
+  if (obj.length === 1 && !extra) return autoParts(st, obj[0]);
+  const pools = POOLS[st.level], ex = EXAMS[st.level], last = lastDoneMap(st.id);
+  const byRecency = ids => ids.slice().sort((a, b) => (last[a] || 0) - (last[b] || 0) || ex.order.indexOf(a) - ex.order.indexOf(b));
+  const budget = examBudget(st) - extra;
+  const cats = Array.from(new Set(obj.flatMap(k => (k === 'mock' ? ['use', 'listening', 'reading'] : [k]))));
+  const out = []; let tot = 0;
+  for (const k of cats) {
+    const cand = byRecency(pools[k]).filter(id => !out.includes(id));
+    if (!cand.length) continue;
+    let c = cand.find(id => tot + ex.parts[id].minutes <= budget);
+    if (!c && (obj.includes(k) || !out.length)) c = cand.slice().sort((a, b) => ex.parts[a].minutes - ex.parts[b].minutes)[0];
+    if (c) { out.push(c); tot += ex.parts[c].minutes; }
+  }
+  for (const id of byRecency(Array.from(new Set(cats.flatMap(k => pools[k]))))) {
+    if (out.includes(id)) continue;
+    if (tot + ex.parts[id].minutes <= budget) { out.push(id); tot += ex.parts[id].minutes; }
+  }
+  return examOrder(st.level, out);
+}
+
+/* What one click generates: an exam-parts session and/or a writing and/or a speaking session. */
+function planFromPick(st, pick) {
+  const skills = pick.skills || [];
+  const obj = skills.filter(k => OBJ_SKILLS.includes(k));
+  const objSkill = obj.length === 1 ? obj[0] : 'mix';
+  return { objSkill, parts: obj.length ? (pick.parts || []).slice() : [], writing: skills.includes('writing'), speaking: skills.includes('speaking') };
+}
+
 function nextWritingPart(st) {
   const last = studentSessions(st.id).find(s => s.skill === 'writing' && s.writing);
   return last && last.writing.part === 1 ? 2 : 1;
@@ -431,7 +467,7 @@ function nextWritingPart(st) {
 /* =========================================================
    Generation
    ========================================================= */
-async function generateFor(stId, skill, pids, opts = {}) {
+async function generateFor(stId, plan, opts = {}) {
   const st = S.students[stId];
   if (!st || S.gen[stId]?.running) return;
   const ctl = new AbortController();
@@ -439,43 +475,58 @@ async function generateFor(stId, skill, pids, opts = {}) {
   const ctx = genContext(st);
   ctx.note = String(opts.note || '').trim().slice(0, 400);
   const topic = opts.grammar || pickGrammarTopic(st);
-  const sess = {
-    studentId: stId, level: st.level, createdAt: Date.now(), dateKey: dateKey(), skill,
-    status: 'ready', parts: [], review: null, grammar: null, writing: null, speaking: null, failed: [], note: ctx.note || '',
-    minutes: 0, difficulty: {}
+  const now = Date.now(), sessions = [];
+  const mk = skill => {
+    const s = {
+      studentId: stId, level: st.level, createdAt: now + sessions.length, dateKey: dateKey(), skill,
+      status: 'ready', parts: [], review: null, grammar: null, writing: null, speaking: null, failed: [], note: ctx.note || '',
+      minutes: 0, difficulty: {}
+    };
+    sessions.push(s); return s;
   };
+  const pids = plan.parts || [];
+  const so = pids.length ? mk(plan.objSkill) : null;
+  const sw = plan.writing ? mk('writing') : null;
+  const ss = plan.speaking ? mk('speaking') : null;
+  if (!sessions.length) return;
+  const host = sessions[0];
   const tasks = [];
   const addStep = (key, label, fn) => { const s = { key, label, state: 'pending' }; g.steps.push(s); tasks.push(async () => { s.state = 'running'; paintGen(stId); try { const v = await fn(); s.state = 'done'; paintGen(stId); return v; } catch (e) { s.state = 'error'; s.msg = errMsg(e); paintGen(stId); throw e; } }); };
 
-  if (skill === 'writing') {
+  if (so) {
+    for (const pid of pids) {
+      const P = partSpec(st.level, pid);
+      addStep(pid, `${P.paper === 'Listening' ? 'Listening' : pid.startsWith('U') ? 'Use of English' : 'Reading'} ${P.label} · ${P.title}`, async () => {
+        const raw = await ask(genPartPrompt(st, pid, ctx), { tier: 'complex', signal: ctl.signal });
+        const part = normalizePart(st.level, pid, raw);
+        so.parts.push(part); so.difficulty[pid] = diffOf(st, pid);
+      });
+    }
+    so.minutes = sessionMinutes(st.level, pids);
+  }
+  if (sw) {
     const part = nextWritingPart(st);
     addStep('W', `Writing Part ${part}`, async () => {
       const raw = await ask(genWritingPrompt(st, part, ctx), { tier: 'complex', signal: ctl.signal });
       if (!raw || (!raw.question && !raw.options && !raw.email)) throw badGen('tarea incompleta');
-      raw.part = part; raw.words = raw.words || (part === 1 ? EXAMS[st.level].writing.p1.words : (st.level === 'B2' ? '140–190' : 'about 100'));
-      sess.writing = raw; sess.minutes = GRAMMAR_MIN + 15; sess.difficulty['W' + part] = diffOf(st, 'W' + part);
+      raw.part = part; raw.words = raw.words || (st.level === 'B2' ? '120–150' : 'about 100');
+      sw.writing = raw; sw.difficulty['W' + part] = diffOf(st, 'W' + part);
     });
-  } else if (skill === 'speaking') {
+    sw.minutes = 15;
+  }
+  if (ss) {
     addStep('S', 'Speaking (4 partes)', async () => {
       const raw = await ask(genSpeakingPrompt(st, ctx), { tier: 'default', signal: ctl.signal });
       if (!raw || !raw.part1 || !raw.part3) throw badGen('guion incompleto');
-      sess.speaking = raw; sess.minutes = GRAMMAR_MIN + (st.level === 'B2' ? 14 : 12);
+      ss.speaking = raw;
     });
-  } else {
-    for (const pid of pids) {
-      const P = partSpec(st.level, pid);
-      addStep(pid, `${P.paper === 'Listening' ? 'Listening' : 'Reading'} ${P.label} · ${P.title}`, async () => {
-        const raw = await ask(genPartPrompt(st, pid, ctx), { tier: 'complex', signal: ctl.signal });
-        const part = normalizePart(st.level, pid, raw);
-        sess.parts.push(part); sess.difficulty[pid] = diffOf(st, pid);
-      });
-    }
-    sess.minutes = GRAMMAR_MIN + sessionMinutes(st.level, pids);
+    ss.minutes = speakMin(st);
   }
   addStep('GR', `Gramática: ${topic.es}`, async () => {
     const raw = await ask(genGrammarPrompt(st, topic, ctx.note), { tier: 'default', signal: ctl.signal });
-    sess.grammar = normalizeGrammar(raw, topic);
+    host.grammar = normalizeGrammar(raw, topic);
   });
+  host.minutes += GRAMMAR_MIN;
   paintGen(stId);
   const res = await runPool(tasks, 4);
   g.running = false;
@@ -483,21 +534,25 @@ async function generateFor(stId, skill, pids, opts = {}) {
   if (cancelled) { g.error = 'Generación cancelada.'; paintGen(stId); renderAll(); return; }
   const fatal = res.find(r => !r.ok && r.e && ['not_granted', 'sampling_disabled', 'no_sample', 'rate_limited', 'session_expired'].includes(r.e.code));
   if (fatal) { g.error = errMsg(fatal.e); paintGen(stId); renderAll(); return; }
-  const wanted = skill === 'writing' || skill === 'speaking' ? 0 : pids.length;
-  if ((wanted && !sess.parts.length) || (skill === 'writing' && !sess.writing) || (skill === 'speaking' && !sess.speaking)) {
-    g.error = 'No se ha podido generar la sesión. ' + (res.find(r => !r.ok)?.e ? errMsg(res.find(r => !r.ok).e) : '');
-    paintGen(stId); renderAll(); return;
+  const ok = s => (s === so ? s.parts.length > 0 : s === sw ? !!s.writing : !!s.speaking);
+  const good = sessions.filter(ok);
+  const firstErr = res.find(r => !r.ok)?.e;
+  if (!good.length) { g.error = 'No se ha podido generar la sesión. ' + (firstErr ? errMsg(firstErr) : ''); paintGen(stId); renderAll(); return; }
+  if (so) {
+    so.parts = examOrder(st.level, so.parts.map(p => p.id)).map(id => so.parts.find(p => p.id === id));
+    so.failed = pids.filter(id => !so.parts.some(p => p.id === id));
   }
-  sess.parts = examOrder(st.level, sess.parts.map(p => p.id)).map(id => sess.parts.find(p => p.id === id));
-  sess.failed = pids.filter(id => !sess.parts.some(p => p.id === id));
-  const id = uid('s');
-  g.sessionId = id;
-  await saveSession(id, sess);
-  if (sess.grammar) await saveStudent(st.id, Object.assign(clone(stripId(S.students[st.id] || st)), { grammarDone: [...(S.students[st.id]?.grammarDone || []), sess.grammar.topicId] }));
+  if (host.grammar && !ok(host)) { good[0].grammar = host.grammar; good[0].minutes += GRAMMAR_MIN; }
+  const ids = [];
+  for (const s of good) { const id = uid('s'); ids.push(id); await saveSession(id, s); }
+  g.sessionId = ids[0];
+  const gram = good.find(s => s.grammar);
+  if (gram) await saveStudent(st.id, Object.assign(clone(stripId(S.students[st.id] || st)), { grammarDone: [...(S.students[st.id]?.grammarDone || []), gram.grammar.topicId] }));
   S.gen[stId] = null;
   if (S.pick[stId]) Object.assign(S.pick[stId], { grammar: '', grammarText: '', note: '' });
-  toast(`Sesión de ${st.name} lista`);
-  if (opts.open !== false && S.view === 'today' && S.cur === stId) openSession(id); else renderAll();
+  const missing = sessions.length - good.length;
+  toast(good.length > 1 ? `${good.length} sesiones de ${st.name} listas` : `Sesión de ${st.name} lista` + (missing ? ' (una parte falló; vuelve a generarla)' : ''));
+  if (good.length === 1 && opts.open !== false && S.view === 'today' && S.cur === stId) openSession(ids[0]); else renderAll();
 }
 
 async function retryPart(sessId, pid) {

@@ -74,6 +74,7 @@ const SKILLS = {
   writing:   { es: 'Writing', desc: 'Redacción cronometrada' },
   speaking:  { es: 'Speaking', desc: 'Examen oral contigo' },
   mock:      { es: 'Mini-simulacro', desc: 'Una parte de cada destreza' },
+  mix:       { es: 'Sesión combinada', desc: 'Partes de varias destrezas elegidas a mano' },
   rest:      { es: 'Descanso', desc: 'Inglés suave: serie, vídeo o lectura' }
 };
 const SKILL_KEYS = ['use', 'reading', 'listening', 'writing', 'speaking', 'mock'];

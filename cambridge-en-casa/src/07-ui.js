@@ -175,9 +175,9 @@ function grammarPickerHtml(st, pick, autoTopic) {
 
 function genPick(st) {
   const k = st.id;
-  if (!S.pick[k] || S.pick[k].day !== todayKey()) {
+  if (!S.pick[k] || S.pick[k].day !== todayKey() || !Array.isArray(S.pick[k].skills)) {
     let skill = todaySkill(st); if (skill === 'rest') skill = 'use';
-    S.pick[k] = { day: todayKey(), skill, parts: autoParts(st, skill) };
+    S.pick[k] = { day: todayKey(), skills: [skill], parts: autoPartsFor(st, [skill]), grammar: '', grammarText: '', note: '' };
   }
   return S.pick[k];
 }
@@ -188,12 +188,15 @@ function todayHtml() {
   const now = new Date(), planned = todaySkill(st), rest = planned === 'rest';
   const pick = genPick(st), g = S.gen[st.id];
   const pend = pendingFor(st.id), today = todaysFor(st.id);
-  const examMin = pick.skill === 'writing' ? 15 : pick.skill === 'speaking' ? (st.level === 'B2' ? 14 : 12) : sessionMinutes(st.level, pick.parts);
+  const plan = planFromPick(st, pick);
+  const examMin = sessionMinutes(st.level, plan.parts) + (plan.writing ? 15 : 0) + (plan.speaking ? speakMin(st) : 0);
   const mins = GRAMMAR_MIN + examMin, maxMin = +st.minutes || 20;
   const autoTopic = pickGrammarTopic(st), manual = chosenTopic(st, pick);
   const topic = manual || autoTopic;
   const pools = POOLS[st.level];
-  const candidates = pick.skill === 'mock' ? examOrder(st.level, Array.from(new Set([...pools.use, ...pools.reading, ...pools.listening]))) : (pools[pick.skill] || []);
+  const objSel = pick.skills.filter(k => OBJ_SKILLS.includes(k));
+  const candidates = examOrder(st.level, Array.from(new Set(objSel.flatMap(k => (k === 'mock' ? [...pools.use, ...pools.reading, ...pools.listening] : pools[k])))));
+  const kinds = [plan.parts.length ? 'una sesión con las partes de examen' : '', plan.writing ? 'una de Writing' : '', plan.speaking ? 'una de Speaking' : ''].filter(Boolean);
   const others = studentList().filter(s => s.id !== st.id);
 
   let html = `<section class="card stack">
@@ -223,8 +226,9 @@ function todayHtml() {
   html += `<section class="card stack" id="gen-box">
     <div class="spread"><h3 class="h3">${today.length ? 'Generar otra sesión' : 'Generar la sesión de hoy'}</h3><span class="pill ${mins > maxMin ? 'todo' : 'plain'}">≈ ${mins} min · ${GRAMMAR_MIN} de gramática + ${examMin}${mins > maxMin ? ` · pasa de ${maxMin}` : ''}</span></div>
     <div class="stack" style="gap:8px">
-      <span class="small muted">Destreza</span>
-      <div class="chips" role="group" aria-label="Destreza">${SKILL_KEYS.map(k => `<button type="button" class="chip" data-skill="${k}" aria-pressed="${pick.skill === k}">${esc(SKILLS[k].es)}${k === planned ? ' <small>plan</small>' : ''}</button>`).join('')}</div>
+      <span class="small muted">Destrezas (puedes marcar varias el mismo día)</span>
+      <div class="chips" role="group" aria-label="Destrezas">${SKILL_KEYS.map(k => `<button type="button" class="chip" data-skill="${k}" aria-pressed="${pick.skills.includes(k)}">${esc(SKILLS[k].es)}${k === planned ? ' <small>plan</small>' : ''}</button>`).join('')}</div>
+      ${kinds.length > 1 ? `<p class="small muted">Se crearán ${kinds.join(', ').replace(/, ([^,]*)$/, ' y $1')}, cada una con su PDF. La gramática va en la primera.</p>` : ''}
     </div>`;
   if (candidates.length) {
     const last = lastDoneMap(st.id);
@@ -234,15 +238,15 @@ function todayHtml() {
     </div>`;
   }
   html += grammarPickerHtml(st, pick, autoTopic);
-  const dlist = pick.skill === 'writing' ? [`W${nextWritingPart(st)}`] : pick.parts;
+  const dlist = [...plan.parts, ...(plan.writing ? [`W${nextWritingPart(st)}`] : [])];
   const dtxt = dlist.length ? Array.from(new Set(dlist.map(id => DIFF_ES[diffOf(st, id)]))).join(' / ') : DIFF_ES[2];
-  html += `<div class="meta-line"><span>Dificultad: <b>${esc(dtxt)}</b></span><span>Gramática de hoy: <b>${esc(topic.es)}</b>${manual ? ' (elegida a mano)' : ''}</span>${pick.skill === 'writing' ? `<span>Toca: <b>Writing Part ${nextWritingPart(st)}</b></span>` : ''}</div>`;
+  html += `<div class="meta-line"><span>Dificultad: <b>${esc(dtxt)}</b></span><span>Gramática de hoy: <b>${esc(topic.es)}</b>${manual ? ' (elegida a mano)' : ''}</span>${plan.writing ? `<span>Writing: <b>Part ${nextWritingPart(st)}</b></span>` : ''}</div>`;
   if (g && (g.running || g.error)) {
     html += `<div class="stack" style="gap:8px"><div class="steps">${g.steps.map(s => `<div class="step ${s.state}"><span class="dot" aria-hidden="true"></span><span>${esc(s.label)}${s.state === 'error' ? ` — <span class="muted">${esc(s.msg || '')}</span>` : ''}</span></div>`).join('')}</div>
       ${g.running ? `<p class="small muted">Claude está escribiendo textos originales y comprobando cada respuesta. Suele tardar 1–3 minutos; puedes seguir usando la app.</p>` : ''}
       ${g.error ? `<div class="notice err">${esc(g.error)}</div>` : ''}</div>`;
   }
-  const canGen = !(g && g.running) && (pick.skill === 'writing' || pick.skill === 'speaking' || pick.parts.length > 0);
+  const canGen = !(g && g.running) && (plan.writing || plan.speaking || plan.parts.length > 0);
   html += `<div class="row">
       ${g && g.running ? btn('Cancelar', `data-cancel-gen="${st.id}"`, '') : btn(`Generar sesión de ${st.name}`, `data-generate="${st.id}" ${canGen ? '' : 'disabled'}`, 'primary big', 'spark')}
       ${others.length && !(g && g.running) ? btn(`Generar la de hoy para ${[st, ...others].map(s => s.name).join(' y ')}`, 'data-generate-all="1"', '') : ''}
@@ -489,7 +493,7 @@ function progressHtml() {
     </svg></div></div>`;
     const bySkill = {};
     for (const s of done) { const k = s.skill === 'mock' ? 'mock' : s.skill; (bySkill[k] = bySkill[k] || []).push(s.results?.pct || 0); }
-    h += `<div><h3 class="h3" style="margin-bottom:8px">Media por destreza (últimas 4)</h3><div class="skill-bars">${SKILL_KEYS.filter(k => bySkill[k]).map(k => { const a = bySkill[k].slice(0, 4); const v = Math.round(a.reduce((t, x) => t + x, 0) / a.length); return `<div class="sb"><span>${esc(SKILLS[k].es)}</span><span class="track"><span style="width:${v}%"></span></span><span class="score">${v}%</span></div>`; }).join('')}</div></div>`;
+    h += `<div><h3 class="h3" style="margin-bottom:8px">Media por destreza (últimas 4)</h3><div class="skill-bars">${[...SKILL_KEYS, 'mix'].filter(k => bySkill[k]).map(k => { const a = bySkill[k].slice(0, 4); const v = Math.round(a.reduce((t, x) => t + x, 0) / a.length); return `<div class="sb"><span>${esc(SKILLS[k].es)}</span><span class="track"><span style="width:${v}%"></span></span><span class="score">${v}%</span></div>`; }).join('')}</div></div>`;
   } else h += '<p class="empty">Cuando corrijas la primera sesión verás aquí su evolución.</p>';
   const allG = allGrammar();
   const doneG = (st.grammarDone || []).map(id => allG.find(t => t.id === id) || (() => { const s2 = studentSessions(st.id).find(x => x.grammar && x.grammar.topicId === id); return s2 ? { id, es: s2.grammar.title || s2.grammar.topic } : null; })()).filter(Boolean);
@@ -626,9 +630,12 @@ async function runGrade(id, fn) {
   catch (e) { delete S.busy[id]; S.errors[id] = errMsg(e); renderMain(true); }
 }
 
-function setPick(st, patch) {
-  const p = genPick(st); Object.assign(p, patch);
-  if (patch.skill) p.parts = autoParts(st, patch.skill);
+function toggleSkill(st, k) {
+  const p = genPick(st);
+  const has = p.skills.includes(k);
+  if (has && p.skills.length === 1) return;
+  p.skills = SKILL_KEYS.filter(x => (x === k ? !has : p.skills.includes(x)));
+  p.parts = autoPartsFor(st, p.skills);
   renderMain(true);
 }
 
@@ -641,7 +648,7 @@ document.addEventListener('click', async ev => {
   if (d.open) { openSession(d.open, d.tab); return; }
   if (d.tabGo) { if (d.tabGo !== 'audio') stopAudio(); S.sessTab = d.tabGo; renderMain(true); return; }
   if (d.filter) { S.listFilter = d.filter; renderMain(true); return; }
-  if (d.skill) { const st = curStudent(); if (st) setPick(st, { skill: d.skill }); return; }
+  if (d.skill) { const st = curStudent(); if (st) toggleSkill(st, d.skill); return; }
   if (d.part) {
     const st = curStudent(); if (!st) return; const p = genPick(st);
     p.parts = p.parts.includes(d.part) ? p.parts.filter(x => x !== d.part) : examOrder(st.level, [...p.parts, d.part]);
@@ -650,13 +657,15 @@ document.addEventListener('click', async ev => {
   if (d.generate) {
     const st = S.students[d.generate]; if (!st) return; const p = genPick(st);
     if (p.grammar === 'custom' && !String(p.grammarText || '').trim()) { toast('Escribe el tema de gramática o elige «Automática».'); $('#g-custom')?.focus(); return; }
-    generateFor(st.id, p.skill, p.parts.slice(), { grammar: chosenTopic(st, p), note: p.note }); return;
+    const plan = planFromPick(st, p);
+    if (!plan.parts.length && !plan.writing && !plan.speaking) { toast('Elige al menos una parte del examen.'); return; }
+    generateFor(st.id, plan, { grammar: chosenTopic(st, p), note: p.note }); return;
   }
   if (d.generateAll) {
     for (const st of studentList()) {
       if (S.gen[st.id]?.running) continue;
       const p = genPick(st);
-      generateFor(st.id, p.skill, p.parts.slice(), { open: false, grammar: chosenTopic(st, p), note: p.note });
+      generateFor(st.id, planFromPick(st, p), { open: false, grammar: chosenTopic(st, p), note: p.note });
     }
     toast('Generando las sesiones de hoy…'); return;
   }

@@ -526,7 +526,7 @@ function pdfMeta(sess, what) {
 }
 function fileName(sess, what) {
   const st = S.students[sess.studentId] || { name: 'alumno' };
-  const sk = (SKILLS[sess.skill]?.es || sess.skill).replace(/[^A-Za-z]+/g, '');
+  const sk = (SKILLS[sess.skill]?.es || sess.skill).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z]+/g, '');
   return `${st.name}_${sess.dateKey}_${sk}_${what}.pdf`.replace(/\s+/g, '');
 }
 
