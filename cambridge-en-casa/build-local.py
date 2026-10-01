@@ -44,7 +44,8 @@ def main():
     seed = '<!--LOCAL_SEED-->'
     if a.seed:
         docs = json.loads(pathlib.Path(a.seed).read_text())['docs']
-        seed = '<script>window.__LOCAL_SEED=' + json.dumps(docs, ensure_ascii=False).replace('</', '<\\/') + ';</script>'
+        seed = ('<script>window.__LOCAL_SEED=' + json.dumps(docs, ensure_ascii=False).replace('</', '<\\/')
+                + ';window.__LOCAL_SEED_ID="' + pathlib.Path(a.seed).stem + '";</script>')
     parts = [
         '<!doctype html><html lang="es"><head><meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">', RESET,

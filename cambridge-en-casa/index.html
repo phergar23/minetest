@@ -2734,7 +2734,7 @@ function paintAudioStatus() { const n = $('#au-msg'); if (n) n.textContent = AU.
 function audioDownloadHtml(sess) {
   const parts = (sess.parts || []).filter(p => p.id.startsWith('L'));
   if (!window.__LOCAL__) {
-    return `<div class="notice small"><b>Audio en MP3 para descargar:</b> esta página no puede grabar las voces del dispositivo. Usa la versión local (Ajustes › «Descargar versión local»): allí cada parte se convierte en un MP3 con voces neuronales más naturales, para pasárselo a tus hijos.</div>`;
+    return `<div class="notice small"><b>Audio en MP3 para descargar:</b> esta página no puede grabar las voces. Ve a Ajustes › «Descargar versión local», ábrela en el Mac y entra en esta misma sesión › Audio › MP3. No necesita clave de API ni gasta tu suscripción: las voces se generan en tu ordenador.</div>`;
   }
   const ex = EXAMS[sess.level];
   const res = Object.entries(AU.results).filter(([k]) => k.startsWith(sess.id + ':'));
@@ -2919,7 +2919,7 @@ function renderNav() {
 function renderBanner() {
   const b = $('#banner'); const msgs = [];
   if (S.dbState === 'none' && !window.__LOCAL__) msgs.push('<div class="notice warn">No hay almacenamiento en esta vista: lo que hagas no se guardará. Abre la app desde claude.ai para conservar sesiones y progreso.</div>');
-  if (window.__LOCAL__ && !window.LOCAL_CFG.key) msgs.push('<div class="notice warn">Versión local: pon tu clave de API de Anthropic en <b>Ajustes › Conexión con Claude</b> para generar y corregir.</div>');
+  if (window.__LOCAL__ && !window.LOCAL_CFG.key) msgs.push('<div class="notice">Versión local sin clave de API: puedes abrir e imprimir las sesiones y crear los <b>MP3 del listening</b> (pestaña Audio de cada sesión). Para generar o corregir sesiones usa la versión web con tu suscripción, o pon una clave de API en Ajustes (se paga aparte).</div>');
   if (S.dbState === 'revoked') msgs.push('<div class="notice err">Se ha perdido el acceso a los datos. Recarga la página.</div>');
   b.innerHTML = msgs.join('');
   b.hidden = !msgs.length;
@@ -3343,7 +3343,7 @@ function settingsHtml() {
     </section>`;
   }
   if (!window.__LOCAL__) h += `<section class="card stack"><h3 class="h3">Versión local para el ordenador</h3>
-    <p class="muted small">Un solo archivo HTML que se abre con doble clic en el Mac (Chrome o Safari) y lleva ya dentro a tus alumnos, sesiones y cuadernos de errores tal como están ahora. Funciona con tu propia clave de la API de Anthropic, que se paga aparte de la suscripción, y con ella sí puede leer las hojas de respuestas desde una foto. Los datos de la copia local y los de esta versión web van por separado; para pasarlos de una a otra usa la copia de seguridad.</p>
+    <p class="muted small">Un solo archivo HTML que se abre con doble clic en el Mac (Chrome o Safari) y lleva dentro tus alumnos y sesiones tal como están ahora. <b>Sin clave de API</b> sirve para crear los MP3 del listening: descárgalo de nuevo cada vez que generes un listening aquí y se añadirán las sesiones nuevas. Con una clave de API (se paga aparte de la suscripción) también genera y corrige, y lee las hojas desde una foto.</p>
     <div class="row">${btn('Descargar versión local', 'data-dl-local="1"', 'primary', 'pdf')}</div>
   </section>`;
   h += `<section class="card stack"><h3 class="h3">Copia de seguridad</h3>
@@ -3552,7 +3552,7 @@ document.addEventListener('click', async ev => {
     try {
       const r = await fetch('local.html'); if (!r.ok) throw new Error('http ' + r.status);
       const tpl = await r.text();
-      const seed = '<script>window.__LOCAL_SEED=' + JSON.stringify(exportDocs()).replace(/</g, '\\u003c') + ';<' + '/script>';
+      const seed = '<script>window.__LOCAL_SEED=' + JSON.stringify(exportDocs()).replace(/</g, '\\u003c') + ';window.__LOCAL_SEED_ID="' + Date.now() + '";<' + '/script>';
       const mark = '<!-' + '-LOCAL_SEED-->';
       if (!tpl.includes(mark)) throw new Error('template');
       await S.dl.save({ filename: 'CambridgeEnCasa-local.html', data: new Blob([tpl.replace(mark, () => seed)], { type: 'text/html' }) });

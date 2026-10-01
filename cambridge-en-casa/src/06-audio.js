@@ -312,7 +312,7 @@ function paintAudioStatus() { const n = $('#au-msg'); if (n) n.textContent = AU.
 function audioDownloadHtml(sess) {
   const parts = (sess.parts || []).filter(p => p.id.startsWith('L'));
   if (!window.__LOCAL__) {
-    return `<div class="notice small"><b>Audio en MP3 para descargar:</b> esta página no puede grabar las voces del dispositivo. Usa la versión local (Ajustes › «Descargar versión local»): allí cada parte se convierte en un MP3 con voces neuronales más naturales, para pasárselo a tus hijos.</div>`;
+    return `<div class="notice small"><b>Audio en MP3 para descargar:</b> esta página no puede grabar las voces. Ve a Ajustes › «Descargar versión local», ábrela en el Mac y entra en esta misma sesión › Audio › MP3. No necesita clave de API ni gasta tu suscripción: las voces se generan en tu ordenador.</div>`;
   }
   const ex = EXAMS[sess.level];
   const res = Object.entries(AU.results).filter(([k]) => k.startsWith(sess.id + ':'));

@@ -52,8 +52,12 @@ window.__LOCAL__ = true;
       persist = async () => { try { localStorage.setItem('cec-store', JSON.stringify(Object.fromEntries(store))); } catch (e3) { throw fail('quota_exceeded'); } };
       window.__LOCAL_STORE = 'ls';
     }
-    if (!store.size && window.__LOCAL_SEED) {
-      for (const [k, v] of Object.entries(window.__LOCAL_SEED)) { store.set(k, v); await persist(k, v).catch(() => {}); }
+    // Data carried inside the downloaded file: add what this browser does not have yet
+    // (new sessions from the web edition), once per downloaded file.
+    const seedId = String(window.__LOCAL_SEED_ID || 'initial');
+    if (window.__LOCAL_SEED && (!store.size || LS.get('cec-seed-applied') !== seedId)) {
+      for (const [k, v] of Object.entries(window.__LOCAL_SEED)) if (!store.has(k)) { store.set(k, v); await persist(k, v).catch(() => {}); }
+      LS.set('cec-seed-applied', seedId);
     }
   }
   const ready = initStore();
