@@ -14,6 +14,7 @@ Vendor files:
                       containing `import Anthropic from '@anthropic-ai/sdk';
                       window.Anthropic = Anthropic;` with
                       esbuild --bundle --minify --format=iife --platform=browser
+  MP3 encoder:        npm pack @breezystack/lamejs  (dist/lamejs.iife.js)
 --seed takes a backup exported from the app ({"docs": {...}}) to preload.
 """
 import argparse, json, pathlib, re
@@ -32,6 +33,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--jspdf', required=True)
     ap.add_argument('--sdk', required=True)
+    ap.add_argument('--lame', help='lamejs IIFE build (@breezystack/lamejs dist/lamejs.iife.js) for MP3 export')
     ap.add_argument('--seed')
     ap.add_argument('--out', required=True)
     a = ap.parse_args()
@@ -47,7 +49,8 @@ def main():
         '<!doctype html><html lang="es"><head><meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">', RESET,
         (SRC / '01-head.html').read_text(), '</head><body>',
-        body, inline(pathlib.Path(a.sdk).read_text()), seed,
+        body, inline(pathlib.Path(a.sdk).read_text()),
+        inline(pathlib.Path(a.lame).read_text()) if a.lame else '', seed,
         (SRC / '00-local.js').read_text(),
         *[(SRC / f).read_text() for f in ['03-config.js', '04-ai.js', '05-pdf.js', '06-audio.js', '07-ui.js']],
         '</body></html>'

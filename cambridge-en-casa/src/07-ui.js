@@ -122,7 +122,8 @@ function renderAll() { renderNav(); renderBanner(); renderStudents(); renderMain
 function renderMain(force) {
   const m = $('#main');
   const sess = S.openId && S.sessions[S.openId];
-  const typing = S.view === 'settings' || (S.view === 'session' && sess && S.sessTab === 'correct' && sess.status !== 'corrected' && !S.busy[S.openId]);
+  const ae = document.activeElement;
+  const typing = S.view === 'settings' || (S.view === 'session' && sess && S.sessTab === 'correct' && sess.status !== 'corrected' && !S.busy[S.openId]) || (S.view === 'today' && ae && (ae.id === 'g-custom' || ae.id === 's-note'));
   if (!force && typing && m.dataset.sig === `${S.view}|${S.openId}|${S.sessTab}`) return;
   m.dataset.sig = `${S.view}|${S.openId}|${S.sessTab}`;
   if (S.dbState === 'loading') { m.innerHTML = '<div class="card empty">Cargando…</div>'; return; }
@@ -147,6 +148,31 @@ function setupHtml() {
   </section>`;
 }
 
+function chosenTopic(st, pick) {
+  if (!pick || !pick.grammar) return null;
+  if (pick.grammar === 'custom') {
+    const t = String(pick.grammarText || '').trim();
+    return t ? { id: 'custom-' + tagKey(t).slice(0, 40), en: t, es: t, tag: 'accuracy', custom: true } : null;
+  }
+  return allGrammar().find(t => t.id === pick.grammar) || null;
+}
+
+function grammarPickerHtml(st, pick, autoTopic) {
+  const done = new Set(st.grammarDone || []);
+  const order = st.level === 'B2' ? ['B2', 'C1', 'B1'] : ['B1', 'B2', 'C1'];
+  const groups = order.map(lv => `<optgroup label="${lv}">${GRAMMAR[lv].map(t => `<option value="${t.id}" ${pick.grammar === t.id ? 'selected' : ''}>${done.has(t.id) ? '✓ ' : ''}${esc(t.es)}</option>`).join('')}</optgroup>`).join('');
+  return `<div class="form-grid">
+      <label class="field"><span>Gramática de hoy</span><select id="g-topic" data-gpick="1">
+        <option value="" ${!pick.grammar ? 'selected' : ''}>Automática · toca: ${esc(autoTopic.es)}</option>
+        <option value="custom" ${pick.grammar === 'custom' ? 'selected' : ''}>Otro tema (lo escribo yo)…</option>
+        ${groups}
+      </select></label>
+      ${pick.grammar === 'custom' ? `<label class="field"><span>Tema de gramática</span><input id="g-custom" data-gtext="1" value="${esc(pick.grammarText || '')}" placeholder="p. ej. past perfect y narrative tenses" autocomplete="off"></label>` : ''}
+    </div>
+    <label class="field"><span>Indicaciones para esta sesión (opcional)</span><input id="s-note" data-snote="1" value="${esc(pick.note || '')}" placeholder="p. ej. examen del colegio el viernes: unidad 3, viajes y transporte" autocomplete="off"></label>
+    <p class="small muted" style="margin-top:-6px">Los temas con ✓ ya los ha trabajado. Elegir uno a mano no rompe la secuencia: al día siguiente sigue con el siguiente pendiente.</p>`;
+}
+
 function genPick(st) {
   const k = st.id;
   if (!S.pick[k] || S.pick[k].day !== todayKey()) {
@@ -164,7 +190,8 @@ function todayHtml() {
   const pend = pendingFor(st.id), today = todaysFor(st.id);
   const examMin = pick.skill === 'writing' ? 15 : pick.skill === 'speaking' ? (st.level === 'B2' ? 14 : 12) : sessionMinutes(st.level, pick.parts);
   const mins = GRAMMAR_MIN + examMin, maxMin = +st.minutes || 20;
-  const topic = pickGrammarTopic(st);
+  const autoTopic = pickGrammarTopic(st), manual = chosenTopic(st, pick);
+  const topic = manual || autoTopic;
   const pools = POOLS[st.level];
   const candidates = pick.skill === 'mock' ? examOrder(st.level, Array.from(new Set([...pools.use, ...pools.reading, ...pools.listening]))) : (pools[pick.skill] || []);
   const others = studentList().filter(s => s.id !== st.id);
@@ -206,9 +233,10 @@ function todayHtml() {
       <div class="chips" role="group" aria-label="Partes">${candidates.map(id => { const P = ex.parts[id]; return `<button type="button" class="chip" data-part="${id}" aria-pressed="${pick.parts.includes(id)}" title="${esc(P.es)}${last[id] ? ' · última vez ' + esc(shortDate(dateKey(new Date(last[id])))) : ' · nunca'}">${partShort(id, P)} · ${esc(P.title)}<small>${P.minutes}′</small></button>`; }).join('')}</div>
     </div>`;
   }
+  html += grammarPickerHtml(st, pick, autoTopic);
   const dlist = pick.skill === 'writing' ? [`W${nextWritingPart(st)}`] : pick.parts;
   const dtxt = dlist.length ? Array.from(new Set(dlist.map(id => DIFF_ES[diffOf(st, id)]))).join(' / ') : DIFF_ES[2];
-  html += `<div class="meta-line"><span>Dificultad: <b>${esc(dtxt)}</b></span><span>Gramática de hoy: <b>${esc(topic.es)}</b></span>${pick.skill === 'writing' ? `<span>Toca: <b>Writing Part ${nextWritingPart(st)}</b></span>` : ''}</div>`;
+  html += `<div class="meta-line"><span>Dificultad: <b>${esc(dtxt)}</b></span><span>Gramática de hoy: <b>${esc(topic.es)}</b>${manual ? ' (elegida a mano)' : ''}</span>${pick.skill === 'writing' ? `<span>Toca: <b>Writing Part ${nextWritingPart(st)}</b></span>` : ''}</div>`;
   if (g && (g.running || g.error)) {
     html += `<div class="stack" style="gap:8px"><div class="steps">${g.steps.map(s => `<div class="step ${s.state}"><span class="dot" aria-hidden="true"></span><span>${esc(s.label)}${s.state === 'error' ? ` — <span class="muted">${esc(s.msg || '')}</span>` : ''}</span></div>`).join('')}</div>
       ${g.running ? `<p class="small muted">Claude está escribiendo textos originales y comprobando cada respuesta. Suele tardar 1–3 minutos; puedes seguir usando la app.</p>` : ''}
@@ -437,43 +465,6 @@ function resultsHtml(sess) {
   return h + '</div>';
 }
 
-/* ---------- Player ---------- */
-function paintPlayer() {
-  const box = $('#player'); if (!box) return;
-  const sess = S.sessions[S.openId]; if (!sess) return;
-  const parts = (sess.parts || []).filter(p => p.id.startsWith('L'));
-  const ex = EXAMS[sess.level];
-  if (!TTS.ok) { box.innerHTML = '<div class="notice warn">Este navegador no puede leer en voz alta. Lee tú la transcripción (está en «Soluciones»).</div>'; return; }
-  if (!PL.pid || !parts.some(p => p.id === PL.pid)) PL.pid = parts[0]?.id;
-  const part = parts.find(p => p.id === PL.pid);
-  const noVoices = !TTS.voices.length;
-  const playing = PL.sessId === sess.id && PL.state !== 'idle';
-  const scr = part ? listeningProgram(sess, part, PL.short).steps.filter(s => s.say) : [];
-  const curStep = playing ? PL.steps?.[PL.i] : null;
-  box.innerHTML = `<div class="player">
-    <div class="chips">${parts.map(p => `<button type="button" class="chip" data-lpart="${p.id}" aria-pressed="${p.id === PL.pid}">${esc(ex.parts[p.id].label)} · ${esc(ex.parts[p.id].title)}</button>`).join('')}</div>
-    ${noVoices ? '<div class="notice warn">No encuentro voces en inglés en este dispositivo. En iPhone/Mac: Ajustes › Accesibilidad › Contenido leído › Voces › Inglés (Reino Unido). Mientras tanto, lee tú la transcripción.</div>' : ''}
-    <div class="row">
-      ${playing ? btn(PL.state === 'paused' ? 'Continuar' : 'Pausa', 'data-audio="pause"', '', PL.state === 'paused' ? 'play' : 'pause') + btn('Parar', 'data-audio="stop"', '', 'stop') + (PL.count ? btn('Saltar espera', 'data-audio="skip"', 'ghost') : '') : btn('Reproducir como en el examen', 'data-audio="play"', 'primary big', 'play')}
-    </div>
-    <p class="now" id="pl-now" aria-live="polite">${playing ? esc(PL.label) + (PL.count ? ` · ${PL.count} s` : '') : 'Cada grabación suena dos veces, con pausas para leer y responder.'}</p>
-    <div class="row small">
-      <label class="row"><input type="checkbox" id="pl-short" ${PL.short ? 'checked' : ''}> Pausas cortas</label>
-      <label class="row">Velocidad <select id="pl-rate">${[0.85, 0.9, 0.95, 1, 1.05].map(r => `<option value="${r}" ${PL.rate === r ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
-      <label class="row"><input type="checkbox" id="pl-script" ${PL.showScript ? 'checked' : ''}> Mostrar transcripción (para ti)</label>
-    </div>
-    ${PL.showScript ? `<div class="transcript" id="pl-tr">${scr.filter((s, i, a) => i === 0 || s.line !== a[i - 1].line || !s.line).map(s => `<p class="${curStep && (curStep === s || (curStep.line && curStep.line === s.line)) ? 'cur' : ''}"><b>${esc(s.who === '__narrator' ? 'Narrator' : s.who)}:</b> ${esc(s.line ? s.line.text : s.say)}</p>`).join('')}</div>` : ''}
-    <p class="small muted">Voces del dispositivo${TTS.voices.length ? ': ' + esc(Array.from(new Set(Object.values(part ? listeningProgram(sess, part, false).cast : {}).filter(Boolean).map(v => v.name))).slice(0, 4).join(', ')) : ''}. Pon el móvil o el ordenador donde lo oiga bien y que responda en la hoja.</p>
-  </div>`;
-}
-function paintPlayerStatus() {
-  const n = $('#pl-now'); if (!n) return;
-  if (S.view !== 'session' || S.sessTab !== 'audio') return;
-  const needsFull = !!$('#player .btn.primary.big') || ($('[data-audio="skip"]') ? 0 : 1) !== (PL.count ? 0 : 1) || PL.showScript;
-  if (needsFull) { paintPlayer(); return; }
-  n.textContent = PL.label + (PL.count ? ` · ${PL.count} s` : '');
-}
-
 /* ---------- Progress ---------- */
 function progressHtml() {
   const st = curStudent(); if (!st) return '';
@@ -500,8 +491,8 @@ function progressHtml() {
     for (const s of done) { const k = s.skill === 'mock' ? 'mock' : s.skill; (bySkill[k] = bySkill[k] || []).push(s.results?.pct || 0); }
     h += `<div><h3 class="h3" style="margin-bottom:8px">Media por destreza (últimas 4)</h3><div class="skill-bars">${SKILL_KEYS.filter(k => bySkill[k]).map(k => { const a = bySkill[k].slice(0, 4); const v = Math.round(a.reduce((t, x) => t + x, 0) / a.length); return `<div class="sb"><span>${esc(SKILLS[k].es)}</span><span class="track"><span style="width:${v}%"></span></span><span class="score">${v}%</span></div>`; }).join('')}</div></div>`;
   } else h += '<p class="empty">Cuando corrijas la primera sesión verás aquí su evolución.</p>';
-  const allG = [...GRAMMAR.B1, ...GRAMMAR.B2, ...GRAMMAR.C1];
-  const doneG = (st.grammarDone || []).map(id => allG.find(t => t.id === id)).filter(Boolean);
+  const allG = allGrammar();
+  const doneG = (st.grammarDone || []).map(id => allG.find(t => t.id === id) || (() => { const s2 = studentSessions(st.id).find(x => x.grammar && x.grammar.topicId === id); return s2 ? { id, es: s2.grammar.title || s2.grammar.topic } : null; })()).filter(Boolean);
   h += `<div><h3 class="h3" style="margin-bottom:6px">Gramática vista (${doneG.length})</h3>${doneG.length ? `<div class="chips">${doneG.map(t => `<span class="pill plain">${esc(t.es)}</span>`).join('')}</div>` : '<p class="small muted">Cada sesión trae un punto de gramática nuevo; aquí verás los que ya ha trabajado.</p>'}<p class="small muted" style="margin-top:6px">Próximo: <b>${esc(pickGrammarTopic(st).es)}</b></p></div>`;
   const diffs = Object.entries(st.difficulty || {});
   if (diffs.length) h += `<div><h3 class="h3" style="margin-bottom:6px">Dificultad actual por parte</h3><div class="chips">${diffs.map(([k, v]) => `<span class="pill plain">${esc(k.startsWith('W') ? 'Writing P' + k.slice(1) : (EXAMS[st.level].parts[k] ? (EXAMS[st.level].parts[k].paper === 'Listening' ? 'Listening ' : 'Reading ') + EXAMS[st.level].parts[k].label : k))} · ${esc(DIFF_ES[v])}</span>`).join('')}</div><p class="small muted" style="margin-top:6px">Sube un nivel cuando saca 85 % o más en esa parte y baja si saca menos del 50 %.</p></div>`;
@@ -536,6 +527,7 @@ function settingsHtml() {
         <label class="field"><span>Modelo</span><select id="loc-model">${Object.entries(C.models).map(([id, n]) => `<option value="${id}" ${C.model === id ? 'selected' : ''}>${esc(n)}${id === 'claude-opus-5-5' ? ' (recomendado)' : ' (más barato)'}</option>`).join('')}</select></label>
       </div>
       <div class="row">${btn('Guardar y probar la conexión', 'data-loc-save="1"', 'primary')}${C.key ? btn('Borrar la clave', 'data-loc-clear="1"', 'ghost danger') : ''}</div>
+      <label class="row small"><input type="checkbox" id="loc-gpu" ${C.gpu ? 'checked' : ''} ${navigator.gpu ? '' : 'disabled'}> Audio MP3 más rápido con la tarjeta gráfica (WebGPU; la primera vez descarga unos 330 MB en lugar de 90)${navigator.gpu ? '' : ' · no disponible en este navegador'}</label>
       <p class="small muted">Los datos se guardan en este navegador (${window.__LOCAL_STORE === 'idb' ? 'IndexedDB' : 'almacenamiento local'}). Si cambias de navegador u ordenador, pásalos con la copia de seguridad.</p>
     </section>`;
   }
@@ -657,13 +649,14 @@ document.addEventListener('click', async ev => {
   }
   if (d.generate) {
     const st = S.students[d.generate]; if (!st) return; const p = genPick(st);
-    generateFor(st.id, p.skill, p.parts.slice()); return;
+    if (p.grammar === 'custom' && !String(p.grammarText || '').trim()) { toast('Escribe el tema de gramática o elige «Automática».'); $('#g-custom')?.focus(); return; }
+    generateFor(st.id, p.skill, p.parts.slice(), { grammar: chosenTopic(st, p), note: p.note }); return;
   }
   if (d.generateAll) {
     for (const st of studentList()) {
       if (S.gen[st.id]?.running) continue;
       const p = genPick(st);
-      generateFor(st.id, p.skill, p.parts.slice(), { open: false });
+      generateFor(st.id, p.skill, p.parts.slice(), { open: false, grammar: chosenTopic(st, p), note: p.note });
     }
     toast('Generando las sesiones de hoy…'); return;
   }
@@ -719,6 +712,14 @@ document.addEventListener('click', async ev => {
     else if (d.audio === 'pause') pauseAudio();
     else if (d.audio === 'stop') { stopAudio(); paintPlayer(); }
     else if (d.audio === 'skip') PL.skip = true;
+    else if (d.audio === 'test') testVoices();
+    return;
+  }
+  if (d.mp3) { makeListeningAudio(S.openId, d.mp3); return; }
+  if (d.mp3Cancel) { AU.ctl?.abort(); return; }
+  if (d.mp3Save) {
+    const r = AU.results[d.mp3Save]; if (!r) return;
+    try { await S.dl.save({ filename: r.name, data: r.blob }); } catch (e) { if (!e || e.code !== 'declined') toast('No se pudo guardar el audio.'); }
     return;
   }
   if (d.lpart) { stopAudio(); PL.pid = d.lpart; paintPlayer(); return; }
@@ -787,6 +788,7 @@ document.addEventListener('click', async ev => {
 
 document.addEventListener('input', ev => {
   const t = ev.target, d = t.dataset;
+  if (d.gtext || d.snote) { const st = curStudent(); if (!st) return; const p = genPick(st); if (d.gtext) p.grammarText = t.value; else p.note = t.value; return; }
   if (d.quick != null) {
     const sess = S.sessions[S.openId]; if (!sess) return;
     const dr = draftOf(S.openId);
@@ -805,6 +807,7 @@ document.addEventListener('input', ev => {
   if (d.spnotes) { const dr = draftOf(S.openId); dr.sp_notes = t.value; touchDraft(S.openId); return; }
   if (d.sp) { const dr = draftOf(S.openId); dr['sp_' + d.sp] = +t.value; const o = $('#v-' + d.sp); if (o) o.textContent = t.value; touchDraft(S.openId); return; }
 });
+document.addEventListener('toggle', ev => { if (ev.target && ev.target.id === 'vp-box') PL.vpOpen = ev.target.open; }, true);
 document.addEventListener('keydown', ev => {
   const t = ev.target;
   if (ev.key !== 'Enter' || t.tagName !== 'INPUT' || !(t.dataset.k || t.dataset.quick != null)) return;
@@ -815,8 +818,10 @@ document.addEventListener('keydown', ev => {
 });
 document.addEventListener('change', ev => {
   const t = ev.target;
+  if (t.dataset && t.dataset.gpick) { const st = curStudent(); if (st) { genPick(st).grammar = t.value; renderMain(true); if (t.value === 'custom') $('#g-custom')?.focus(); } return; }
   if (t.id === 'pl-short') { PL.short = t.checked; paintPlayer(); }
-  if (t.id === 'pl-rate') { PL.rate = +t.value; }
+  if (t.id === 'loc-gpu') { window.LOCAL_CFG.gpu = t.checked; kokoroP = null; toast(t.checked ? 'Usaré la tarjeta gráfica para el audio' : 'Usaré el procesador para el audio'); return; }
+  if (t.dataset && t.dataset.vp) { const k = t.dataset.vp; VP[k] = ['rate', 'pitch', 'gap'].includes(k) ? +t.value : t.value; saveVP(); paintPlayer(); return; }
   if (t.id === 'pl-script') { PL.showScript = t.checked; paintPlayer(); }
 });
 document.addEventListener('submit', async ev => {

@@ -16,7 +16,9 @@ window.__LOCAL__ = true;
     get key() { return LS.get('cec-api-key') || ''; },
     set key(v) { LS.set('cec-api-key', v || null); },
     get model() { const m = LS.get('cec-model'); return MODELS[m] ? m : 'claude-opus-5-5'; },
-    set model(v) { LS.set('cec-model', MODELS[v] ? v : null); }
+    set model(v) { LS.set('cec-model', MODELS[v] ? v : null); },
+    get gpu() { return LS.get('cec-gpu') === '1'; },
+    set gpu(v) { LS.set('cec-gpu', v ? '1' : null); }
   };
   const fail = (code, userMsg, text) => { const e = new Error(userMsg || code); e.code = code; if (userMsg) e.userMsg = userMsg; if (text) e.text = text; return e; };
 

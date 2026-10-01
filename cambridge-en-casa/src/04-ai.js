@@ -87,6 +87,7 @@ function genPartPrompt(st, pid, ctx) {
     `Difficulty ${d}/5 within ${ex.cefr}: ${DIFF[d]}.`,
     `Topic: something engaging for teenagers. Do NOT reuse these recent topics: ${ctx.recentTopics.join('; ') || 'none'}.`,
     ctx.weak.length ? `Where it fits naturally, include items that practise the student's weak points: ${ctx.weak.join('; ')}.` : '',
+    ctx.note ? `The parent adds this request for today's session (follow it as long as it fits the task format): "${ctx.note}".` : '',
     'Rules:',
     '- 100% original content: never copy or adapt published exam material. British English.',
     '- Exactly one defensible correct answer per item. Distractors must be plausible but wrong for a reason a teacher can explain.',
@@ -101,12 +102,13 @@ function genPartPrompt(st, pid, ctx) {
   ].filter(Boolean).join('\n');
 }
 
-function genGrammarPrompt(st, topic) {
+function genGrammarPrompt(st, topic, note) {
   const ex = EXAMS[st.level];
   return [
     `You are an experienced English teacher of Spanish teenagers preparing ${ex.name} (${ex.cefr}). Write a 5-minute grammar mini-lesson and a short exercise on ONE grammar point.`,
     studentLine(st),
-    `Grammar point: ${topic.en}.`,
+    `Grammar point: ${topic.en}.${topic.custom ? ' (Chosen by the parent, possibly written in Spanish; interpret it as a grammar point and teach it at the right level.)' : ''}`,
+    note ? `The parent adds this request for today (use it to choose the examples and context): "${note}".` : '',
     'The student reads the lesson alone in about 2 minutes, then does the exercise in about 3 minutes. Be clear, concrete and friendly. Write in Spanish (tú) with English examples.',
     '"explanation": 80–140 words in Spanish: what it is, when we use it and how it is formed. No jargon without an example.',
     '"forms": 2–5 rows {"form": short pattern, "example": English example}.',
@@ -153,6 +155,7 @@ Shape: {"topic":"2-4 words","part":2,"type":"choice","words":"${words}","options
     `This is a 15-minute training task (3 minutes planning, 12 minutes writing), so keep the task focused and the word range at ${words} words${B2 ? ' (the real exam asks for 140–190)' : ''}.`,
     `Avoid these recent topics: ${ctx.recentTopics.join('; ') || 'none'}.`,
     ctx.weak.length ? `The student's weak points (you may reflect them in the tips): ${ctx.weak.join('; ')}.` : '',
+    ctx.note ? `The parent adds this request for today's session (follow it as long as it fits the task format): "${ctx.note}".` : '',
     task,
     '"tips": 3 short tips in Spanish for this task type. "usefulLanguage": 8 useful English phrases for it. "plan": a paragraph-by-paragraph plan in Spanish (3–5 short lines). "model": a model answer at a solid level for the exam, within the word range.',
     'Reply with ONLY the JSON object.'
@@ -161,6 +164,7 @@ Shape: {"topic":"2-4 words","part":2,"type":"choice","words":"${words}","options
 
 function genSpeakingPrompt(st, ctx) {
   const ex = EXAMS[st.level], B2 = st.level === 'B2';
+  const note = ctx.note ? `The parent adds this request for today: "${ctx.note}".` : '';
   const p2 = B2
     ? '"part2": the student compares two photographs (describe each photo in detail for the parent in "description", and give English image-search keywords in "search"), a printed "question" (e.g. "Why have the people decided to spend their free time in these ways?"), and a "followUp" question for the partner.'
     : '"part2": each candidate describes one photograph for about one minute (photo A for the student, photo B for the parent-partner). Describe each photo in "description" and give English image-search keywords in "search". "question" is "Describe your photograph."';
@@ -171,6 +175,7 @@ function genSpeakingPrompt(st, ctx) {
     `Write ONE original ${ex.name} (${ex.cefr}) Speaking test to practise at home. A parent plays both the examiner and the partner.`,
     studentLine(st),
     `Avoid these recent topics: ${ctx.recentTopics.join('; ') || 'none'}.`,
+    note,
     `"part1": 6 personal interview questions. ${p2} ${p3} "part4": 5 discussion questions on the Part 3 topic.`,
     '"phrases": 4 groups of useful phrases for the student ({"function":"Comparing","items":[5 phrases]}). "listenFor": 4 things in Spanish the parent should listen for when marking.',
     'Reply with ONLY JSON: {"topic":"2-4 words","part1":{"questions":[]},"part2":{"question":"...","photos":[{"label":"A","description":"...","search":"..."},{"label":"B","description":"...","search":"..."}],"followUp":"..."},"part3":{"situation":"...","question":"...","prompts":[],"decision":"..."},"part4":{"questions":[]},"phrases":[{"function":"...","items":[]}],"listenFor":[]}'
@@ -432,10 +437,11 @@ async function generateFor(stId, skill, pids, opts = {}) {
   const ctl = new AbortController();
   const g = S.gen[stId] = { running: true, ctl, steps: [], error: null, sessionId: null };
   const ctx = genContext(st);
-  const topic = pickGrammarTopic(st);
+  ctx.note = String(opts.note || '').trim().slice(0, 400);
+  const topic = opts.grammar || pickGrammarTopic(st);
   const sess = {
     studentId: stId, level: st.level, createdAt: Date.now(), dateKey: dateKey(), skill,
-    status: 'ready', parts: [], review: null, grammar: null, writing: null, speaking: null, failed: [],
+    status: 'ready', parts: [], review: null, grammar: null, writing: null, speaking: null, failed: [], note: ctx.note || '',
     minutes: 0, difficulty: {}
   };
   const tasks = [];
@@ -467,7 +473,7 @@ async function generateFor(stId, skill, pids, opts = {}) {
     sess.minutes = GRAMMAR_MIN + sessionMinutes(st.level, pids);
   }
   addStep('GR', `Gramática: ${topic.es}`, async () => {
-    const raw = await ask(genGrammarPrompt(st, topic), { tier: 'default', signal: ctl.signal });
+    const raw = await ask(genGrammarPrompt(st, topic, ctx.note), { tier: 'default', signal: ctl.signal });
     sess.grammar = normalizeGrammar(raw, topic);
   });
   paintGen(stId);
@@ -489,6 +495,7 @@ async function generateFor(stId, skill, pids, opts = {}) {
   await saveSession(id, sess);
   if (sess.grammar) await saveStudent(st.id, Object.assign(clone(stripId(S.students[st.id] || st)), { grammarDone: [...(S.students[st.id]?.grammarDone || []), sess.grammar.topicId] }));
   S.gen[stId] = null;
+  if (S.pick[stId]) Object.assign(S.pick[stId], { grammar: '', grammarText: '', note: '' });
   toast(`Sesión de ${st.name} lista`);
   if (opts.open !== false && S.view === 'today' && S.cur === stId) openSession(id); else renderAll();
 }
