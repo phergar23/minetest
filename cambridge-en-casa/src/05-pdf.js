@@ -530,14 +530,14 @@ function fileName(sess, what) {
   return `${st.name}_${sess.dateKey}_${sk}_${what}.pdf`.replace(/\s+/g, '');
 }
 
-function buildExamPdf(sess) {
+function buildExamPdf(sess, o = {}) {
   const st = S.students[sess.studentId] || {};
   const pdf = new Pdf(pdfMeta(sess, 'Ejercicios'));
   const ex = EXAMS[sess.level];
   if (sess.skill === 'writing') return buildWritingPdf(sess, pdf);
   if (sess.skill === 'speaking') return buildSpeakingStudentPdf(sess, pdf);
   const listening = (sess.parts || []).some(p => p.id.startsWith('L'));
-  pdf.title(`${SKILLS[sess.skill]?.es || ''} · ${st.name}`, `${ex.name} · ${niceDate(sess.dateKey)} · ${sess.parts.map(p => ex.parts[p.id].paper.split(' ')[0] + ' ' + ex.parts[p.id].label).join(', ')}`);
+  pdf.title(`${sess.theme || SKILLS[sess.skill]?.es || ''} · ${st.name}`, `${ex.name} · ${niceDate(sess.dateKey)} · ${sess.parts.map(p => ex.parts[p.id].paper.split(' ')[0] + ' ' + ex.parts[p.id].label).join(', ')}`);
   const examMin = sessionMinutes(sess.level, sess.parts.map(p => p.id));
   pdf.box([
     { t: 'Instrucciones: ', b: true },
@@ -547,7 +547,34 @@ function buildExamPdf(sess) {
   if (sess.grammar) renderGrammar(pdf, sess.grammar, null);
   if (sess.review) renderReview(pdf, sess.review, null);
   sess.parts.forEach((part, i) => { if (i > 0 || sess.grammar || sess.review) pdf.page(); renderPart(pdf, sess, part, null); });
+  if (sess.vocab && !o.noVocab) renderVocab(pdf, sess.vocab);
   return pdf;
+}
+
+/* Topic vocabulary list (sessions built from a textbook unit) */
+function renderVocab(pdf, v) {
+  if (!v || !(v.groups || []).length) return;
+  pdf.page();
+  pdf.title(v.title || 'Vocabulario del tema', v.sub || 'Inglés · Español');
+  const colA = 64, pad = 2.4;
+  for (const g of v.groups) {
+    pdf.need(24);
+    pdf.h3(g.name, PC.omr);
+    if (g.note) { pdf.small(g.note); pdf.sp(1); }
+    (g.items || []).forEach((it, i) => {
+      const en = Array.isArray(it) ? it[0] : it.en, es = Array.isArray(it) ? it[1] : it.es;
+      const hA = pdf.height([{ t: en, b: true }], { size: 10, x: pdf.ML + pad, width: colA - 2 * pad });
+      const hB = pdf.height([{ t: es }], { size: 10, x: pdf.ML + colA, width: pdf.CW - colA - pad });
+      const h = Math.max(hA, hB) + 1.6;
+      pdf.need(h);
+      const y0 = pdf.y;
+      if (i % 2 === 0) { pdf.d.setFillColor(...PC.fill); pdf.d.rect(pdf.ML, y0, pdf.CW, h, 'F'); }
+      pdf.y = y0 + 0.8; pdf.rich([{ t: en, b: true }], { size: 10, x: pdf.ML + pad, width: colA - 2 * pad });
+      pdf.y = y0 + 0.8; pdf.rich([{ t: es }], { size: 10, x: pdf.ML + colA, width: pdf.CW - colA - pad });
+      pdf.y = y0 + h;
+    });
+    pdf.sp(4);
+  }
 }
 
 function buildAnswerSheetPdf(sess, into) {
@@ -563,7 +590,7 @@ function buildAnswerSheetPdf(sess, into) {
   const y0 = pdf.y; d.setDrawColor(...PC.omr); d.setLineWidth(0.35); d.rect(pdf.ML, y0, pdf.CW, 14);
   pdf.set('normal', 8, PC.omr); d.text('Candidate name', pdf.ML + 2, y0 + 3.6); d.text('Date', pdf.ML + 112, y0 + 3.6); d.text('Session', pdf.ML + 142, y0 + 3.6);
   pdf.set('bold', 11, PC.ink); d.text(pdfSafe(st.name || ''), pdf.ML + 2, y0 + 10.5); d.text(pdfSafe(shortDate(sess.dateKey)), pdf.ML + 112, y0 + 10.5);
-  d.text(pdfSafe(SKILLS[sess.skill]?.es || ''), pdf.ML + 142, y0 + 10.5);
+  { const sk = pdfSafe(SKILLS[sess.skill]?.es || ''); pdf.set('bold', sk.length > 12 ? 9 : 11, PC.ink); d.text(sk, pdf.ML + 142, y0 + 10.5); }
   d.line(pdf.ML + 110, y0, pdf.ML + 110, y0 + 14); d.line(pdf.ML + 140, y0, pdf.ML + 140, y0 + 14);
   pdf.y = y0 + 18;
   // instructions
@@ -624,7 +651,7 @@ function buildSolutionsPdf(sess) {
   const st = S.students[sess.studentId] || {};
   const ex = EXAMS[sess.level];
   const pdf = new Pdf(pdfMeta(sess, 'Soluciones'));
-  pdf.title(`Soluciones · ${SKILLS[sess.skill]?.es || ''}`, `Para corregir · ${st.name} · ${niceDate(sess.dateKey)}`);
+  pdf.title(`Soluciones · ${sess.theme || SKILLS[sess.skill]?.es || ''}`, `Para corregir · ${st.name} · ${niceDate(sess.dateKey)}`);
   if (sess.skill === 'writing') {
     const w = sess.writing || {};
     pdf.h3('Tarea'); pdf.rich([{ t: writingTaskText(w, 0) }], { size: 10 }); pdf.sp(2);

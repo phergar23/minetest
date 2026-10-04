@@ -74,7 +74,7 @@ function sessTitle(sess) {
   return (sess.parts || []).map(p => `${ex.parts[p.id].paper === 'Listening' ? 'L' : 'P'}${ex.parts[p.id].label.replace('Part ', '')}`).join(' · ');
 }
 function sessTopics(sess) {
-  return [...(sess.parts || []).map(p => p.topic || p.title), sess.writing?.topic, sess.speaking?.topic].filter(Boolean).join(' · ');
+  return [sess.theme, ...(sess.parts || []).map(p => p.topic || p.title), sess.writing?.topic, sess.speaking?.topic].filter(Boolean).join(' · ');
 }
 function pendingFor(stId) { return studentSessions(stId).filter(s => s.status !== 'corrected' && s.dateKey < todayKey()); }
 function todaysFor(stId) { return studentSessions(stId).filter(s => s.dateKey === todayKey()); }
@@ -639,8 +639,9 @@ async function downloadPdf(kind, id, button) {
     else {
       const sess = S.sessions[id]; if (!sess) return;
       if (kind === 'pack') {
-        const pdf = buildExamPdf(sess);
+        const pdf = buildExamPdf(sess, { noVocab: true });
         if (sess.skill !== 'writing' && sess.skill !== 'speaking') buildAnswerSheetPdf(sess, pdf);
+        if (sess.vocab) renderVocab(pdf, sess.vocab);
         blob = pdf.blob(); name = fileName(sess, 'ejercicios');
       } else if (kind === 'exam') { blob = buildExamPdf(sess).blob(); name = fileName(sess, sess.skill === 'speaking' ? 'alumno' : 'ejercicios'); }
       else if (kind === 'sheet') { blob = buildAnswerSheetPdf(sess).blob(); name = fileName(sess, 'hoja_respuestas'); }
