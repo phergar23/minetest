@@ -541,7 +541,7 @@ function buildExamPdf(sess, o = {}) {
   const examMin = sessionMinutes(sess.level, sess.parts.map(p => p.id));
   pdf.box([
     { t: 'Instrucciones: ', b: true },
-    { t: `${sess.grammar ? `${GRAMMAR_MIN} minutos de gramática y luego ${examMin} de práctica de examen (total ${GRAMMAR_MIN + examMin})` : `tiempo recomendado ${examMin} minutos`}. Lápiz y goma, sin diccionario ni ayuda. Escribe tus respuestas en la hoja de respuestas, como en el examen real${listening ? '. Listening: escucharás cada grabación dos veces' : ''}.` }
+    { t: sess.instructions || `${sess.grammar ? `${GRAMMAR_MIN} minutos de gramática y luego ${examMin} de práctica de examen (total ${GRAMMAR_MIN + examMin})` : `tiempo recomendado ${examMin} minutos`}. Lápiz y goma, sin diccionario ni ayuda. Escribe tus respuestas en la hoja de respuestas, como en el examen real${listening ? '. Listening: escucharás cada grabación dos veces' : ''}.` }
   ], { size: 9.5 });
   pdf.sp(2);
   if (sess.grammar) renderGrammar(pdf, sess.grammar, null);
